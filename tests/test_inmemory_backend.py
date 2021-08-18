@@ -76,3 +76,33 @@ class TestInMemoryPubSubManager:
         await manager.unsubscribe_from_topic("topic", "test-session")
         assert len(manager.subscribed_topics) == 0
         assert not manager.is_subscribed_to_topic("topic")
+
+    async def test_session_subscriptions(self, manager: InMemoryPubSubManager):
+        async with manager.get_session() as session:
+            await session.subscribe_to_topic("topic")
+            assert session.is_subscribed_to_topic("topic")
+            assert manager.is_subscribed_to_topic("topic")
+            await session.unsubscribe_from_topic("topic")
+            assert not session.is_subscribed_to_topic("topic")
+            assert not manager.is_subscribed_to_topic("topic")
+
+    async def test_session_callbacks(self, manager: InMemoryPubSubManager):
+        async with manager.get_session() as session:
+            cache = []
+            cb = partial(callback, cache)
+            unsub = session.callback(cb)
+            await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys())
+            unsub()
+            assert len(cache) == 1
+            assert cache[-1] == "test cb"
+
+    async def test_session_async_exit(self, manager: InMemoryPubSubManager):
+        async with manager.get_session() as session:
+            cb = partial(callback, [])
+            session.callback(cb)
+            await session.subscribe_to_topic("topic")
+
+        assert not session.is_subscribed_to_topic("topic")
+        assert not manager.is_subscribed_to_topic("topic")
+        assert len(session._unregister_callbacks_by_id) == 0
+        assert len(manager.callbacks_by_id) == 0

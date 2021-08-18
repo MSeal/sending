@@ -14,12 +14,8 @@ __all_sessions__ = object()
 
 
 # TODO: prometheus
-# TODO: port over the callbacks-by-topic logic, add a sentinel value for
-# "all topics" so we don't have to split them into separate methods like we do
-# in Gate
 # TODO: no more checking for messages we've seen before -- that can merged into
 # a data validation hook, make an example!
-# TODO: session contextmanager to ensure cleanup of callbacks and subscriptions
 class AbstractPubSubManager(abc.ABC):
     def __init__(self):
         self.outbound_queue: asyncio.Queue[QueuedMessage] = None
@@ -116,6 +112,9 @@ class AbstractPubSubManager(abc.ABC):
             [item for sublist in self.subscribed_topics_by_session.values() for item in sublist]
         )
 
+    def subscribed_topics_for_session(self, session_id: str) -> Set[str]:
+        return self.subscribed_topics_by_session[session_id]
+
     def is_subscribed_to_topic(self, topic_name: str) -> bool:
         return topic_name in self.subscribed_topics
 
@@ -125,11 +124,11 @@ class AbstractPubSubManager(abc.ABC):
 
     def callback(self, fn: Callable) -> Callable:
         fn = ensure_async(fn)
-        cb_id = uuid4()
+        cb_id = str(uuid4())
         self.callbacks_by_id[cb_id] = fn
         return partial(self._detach_callback, cb_id)
 
-    def _detach_callback(self, cb_id: UUID):
+    def _detach_callback(self, cb_id: str):
         if cb_id in self.callbacks_by_id:
             del self.callbacks_by_id[cb_id]
 
@@ -176,3 +175,58 @@ class AbstractPubSubManager(abc.ABC):
     @abc.abstractmethod
     async def _poll(self):
         pass
+
+    def get_session(self):
+        return PubSubSession(self)
+
+
+class PubSubSession:
+    def __init__(self, parent: AbstractPubSubManager) -> None:
+        self.id: str = str(uuid4())
+        self.parent: AbstractPubSubManager = parent
+        self._unregister_callbacks_by_id: Dict[str, Callable] = {}
+
+    @property
+    def subscribed_topics(self) -> Set[str]:
+        return self.parent.subscribed_topics_by_session[self.id]
+
+    def is_subscribed_to_topic(self, topic_name: str) -> bool:
+        return topic_name in self.subscribed_topics
+
+    async def subscribe_to_topic(self, topic_name: str):
+        return await self.parent.subscribe_to_topic(topic_name, self.id)
+
+    async def unsubscribe_from_topic(self, topic_name: str):
+        return await self.parent.unsubscribe_from_topic(topic_name, self.id)
+
+    def callback(self, fn: Callable):
+        unregister_callback_id = str(uuid4())
+        unregister_callback = self.parent.callback(fn)
+        self._unregister_callbacks_by_id[unregister_callback_id] = unregister_callback
+        return partial(self._detach_callback, unregister_callback_id)
+
+    def _detach_callback(self, cb_id: str):
+        # We do a second layer of ID-Callback caching here so that we can support
+        # the detaching of callbacks mid-session but also so that we can pull the
+        # session's cache of unregister callback methods and run them in batch
+        # during cleanup.
+        parent_detach_callback = self._unregister_callbacks_by_id.get(cb_id)
+        if parent_detach_callback is not None:
+            del self._unregister_callbacks_by_id[cb_id]
+            return parent_detach_callback()
+
+    async def stop(self):
+        for cb in self._unregister_callbacks_by_id.values():
+            cb()
+
+        self._unregister_callbacks_by_id.clear()
+
+        await asyncio.gather(
+            *[self.unsubscribe_from_topic(topic_name) for topic_name in self.subscribed_topics]
+        )
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.stop()
