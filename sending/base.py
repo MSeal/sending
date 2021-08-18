@@ -1,6 +1,6 @@
 import abc
 import asyncio
-from collections import namedtuple
+from collections import defaultdict, namedtuple
 from functools import partial
 from typing import Callable, Coroutine, Dict, Iterator, List, Set
 from uuid import UUID, uuid4
@@ -10,6 +10,8 @@ from .util import ensure_async, split_collection
 
 QueuedMessage = namedtuple("QueuedMessage", ["topic", "contents"])
 
+__all_sessions__ = object()
+
 
 # TODO: prometheus
 # TODO: port over the callbacks-by-topic logic, add a sentinel value for
@@ -18,8 +20,6 @@ QueuedMessage = namedtuple("QueuedMessage", ["topic", "contents"])
 # TODO: no more checking for messages we've seen before -- that can merged into
 # a data validation hook, make an example!
 # TODO: session contextmanager to ensure cleanup of callbacks and subscriptions
-# TODO: cleanup subscriptions based on the number of subscribers. Distinguish
-# between subscriptions made at the manager level and at a session level.
 class AbstractPubSubManager(abc.ABC):
     def __init__(self):
         self.outbound_queue: asyncio.Queue[QueuedMessage] = None
@@ -31,7 +31,7 @@ class AbstractPubSubManager(abc.ABC):
         self.callback_delegation_workers = 1
 
         self.poll_workers: List[asyncio.Task] = []
-        self.subscribed_topics: Set[str] = set()
+        self.subscribed_topics_by_session: Dict[str, Set] = defaultdict(set)
 
         self.callbacks_by_id: Dict[UUID, Coroutine] = {}
 
@@ -61,8 +61,7 @@ class AbstractPubSubManager(abc.ABC):
 
     async def shutdown(self, now=False):
         if not now:
-            await self.inbound_queue.join()
-            await self.outbound_queue.join()
+            await self._drain_queues()
 
         self.inbound_queue = None
         self.outbound_queue = None
@@ -87,20 +86,38 @@ class AbstractPubSubManager(abc.ABC):
         self.inbound_workers.clear()
         self.poll_workers.clear()
 
+    async def _drain_queues(self):
+        await self.inbound_queue.join()
+        await self.outbound_queue.join()
+
     def send(self, topic_name: str, message):
         self.outbound_queue.put_nowait(QueuedMessage(topic_name, message))
 
-    async def subscribe_to_topic(self, topic_name: str):
+    async def subscribe_to_topic(self, topic_name: str, session_id=__all_sessions__):
         await self._create_topic_subscription(topic_name)
-        self.subscribed_topics.add(topic_name)
+        self.subscribed_topics_by_session[session_id].add(topic_name)
 
     @abc.abstractmethod
     async def _create_topic_subscription(self, topic_name: str):
         pass
 
-    async def unsubscribe_from_topic(self, topic_name: str):
-        await self._cleanup_topic_subscription(topic_name)
-        self.subscribed_topics.remove(topic_name)
+    async def unsubscribe_from_topic(self, topic_name: str, session_id=__all_sessions__):
+        session_subscriptions = self.subscribed_topics_by_session[session_id]
+
+        if topic_name in session_subscriptions:
+            session_subscriptions.remove(topic_name)
+
+        if not self.is_subscribed_to_topic(topic_name):
+            await self._cleanup_topic_subscription(topic_name)
+
+    @property
+    def subscribed_topics(self) -> Set[str]:
+        return set(
+            [item for sublist in self.subscribed_topics_by_session.values() for item in sublist]
+        )
+
+    def is_subscribed_to_topic(self, topic_name: str) -> bool:
+        return topic_name in self.subscribed_topics
 
     @abc.abstractmethod
     async def _cleanup_topic_subscription(self, topic_name: str):

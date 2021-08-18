@@ -2,6 +2,7 @@ from functools import partial
 
 import pytest
 from sending.backends.memory import InMemoryPubSubManager
+from sending.base import __all_sessions__
 
 
 @pytest.fixture()
@@ -18,12 +19,6 @@ def callback(iterable, message):
 
 async def async_callback(iterable, message):
     iterable.append(message)
-
-
-async def wait_on_queues(manager: InMemoryPubSubManager):
-    await manager.outbound_queue.join()
-    await manager.message_queue.join()
-    await manager.inbound_queue.join()
 
 
 @pytest.mark.asyncio
@@ -52,7 +47,7 @@ class TestInMemoryPubSubManager:
         await manager.subscribe_to_topic("topic")
         unsub = manager.callback(cb)
         manager.send("topic", "hello")
-        await wait_on_queues(manager)
+        await manager._drain_queues()
         unsub()
         assert len(cache) == 1
         await manager.unsubscribe_from_topic("topic")
@@ -64,5 +59,20 @@ class TestInMemoryPubSubManager:
         unsub = manager.callback(cb)
         manager.send("topic", "hello")
         unsub()
-        await wait_on_queues(manager)
+        await manager._drain_queues()
         assert len(cache) == 0
+
+    async def test_unsub_from_unsubscribed_topic(self, manager: InMemoryPubSubManager):
+        await manager.unsubscribe_from_topic("topic")
+        assert len(manager.subscribed_topics) == 0
+
+    async def test_subscriptions_across_multiple_sessions(self, manager: InMemoryPubSubManager):
+        await manager.subscribe_to_topic("topic", __all_sessions__)
+        await manager.subscribe_to_topic("topic", "test-session")
+        assert manager.subscribed_topics == {"topic"}
+        assert manager.is_subscribed_to_topic("topic")
+        await manager.unsubscribe_from_topic("topic", __all_sessions__)
+        assert manager.is_subscribed_to_topic("topic")
+        await manager.unsubscribe_from_topic("topic", "test-session")
+        assert len(manager.subscribed_topics) == 0
+        assert not manager.is_subscribed_to_topic("topic")

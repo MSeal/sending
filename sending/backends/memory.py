@@ -14,11 +14,13 @@ class InMemoryPubSubManager(AbstractPubSubManager):
         return await super().initialize(*args, **kwargs)
 
     async def shutdown(self, now=False):
-        if not now:
-            await self.message_queue.join()
-
-        self.message_queue = None
         await super().shutdown(now=now)
+        self.message_queue = None
+
+    async def _drain_queues(self):
+        await self.outbound_queue.join()
+        await self.message_queue.join()
+        await self.inbound_queue.join()
 
     async def _create_topic_subscription(self, topic_name: str):
         # No external action needs to be taken
