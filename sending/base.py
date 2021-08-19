@@ -13,7 +13,7 @@ QueuedMessage = namedtuple("QueuedMessage", ["topic", "contents"])
 __all_sessions__ = object()
 
 
-# TODO: prometheus
+# TODO: prometheus + logging
 # TODO: no more checking for messages we've seen before -- that can merged into
 # a data validation hook, make an example!
 class AbstractPubSubManager(abc.ABC):

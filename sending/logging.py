@@ -1,10 +1,9 @@
 import logging
-
-from .settings import settings
+import os
 
 logger = logging.getLogger("sending")
 
-if settings.enable_logging:
+if os.environ.get("SENDING__ENABLE_LOGGING"):
     logger.setLevel(logging.DEBUG)
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
