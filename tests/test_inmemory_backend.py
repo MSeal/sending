@@ -106,3 +106,23 @@ class TestInMemoryPubSubManager:
         assert not manager.is_subscribed_to_topic("topic")
         assert len(session._unregister_callbacks_by_id) == 0
         assert len(manager.callbacks_by_id) == 0
+
+    async def test_manager_shutdown(self, manager: InMemoryPubSubManager):
+        cb = partial(async_callback, [])
+        await manager.subscribe_to_topic("topic")
+        manager.callback(cb)
+        await manager.shutdown(now=False)
+        assert manager.inbound_queue is None
+        assert manager.outbound_queue is None
+        assert len(manager.subscribed_topics) == 0
+        assert len(manager.callbacks_by_id) == 0
+        assert len(manager.poll_workers) == 0
+        assert len(manager.inbound_workers) == 0
+        assert len(manager.outbound_workers) == 0
+
+    async def test_manager_dedupes_subscriptions(self, manager: InMemoryPubSubManager):
+        await manager.subscribe_to_topic("topic")
+        await manager.subscribe_to_topic("topic")
+        assert len(manager.subscribed_topics) == 1
+        await manager.unsubscribe_from_topic("topic")
+        assert len(manager.subscribed_topics) == 0

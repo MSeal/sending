@@ -2,9 +2,11 @@ import abc
 import asyncio
 from collections import defaultdict, namedtuple
 from functools import partial
+from time import monotonic
 from typing import Callable, Coroutine, Dict, Iterator, List, Set
 from uuid import UUID, uuid4
 
+from . import metrics
 from .logging import logger
 from .util import ensure_async, split_collection
 
@@ -13,7 +15,6 @@ QueuedMessage = namedtuple("QueuedMessage", ["topic", "contents"])
 __all_sessions__ = object()
 
 
-# TODO: prometheus + logging
 # TODO: no more checking for messages we've seen before -- that can merged into
 # a data validation hook, make an example!
 class AbstractPubSubManager(abc.ABC):
@@ -38,7 +39,7 @@ class AbstractPubSubManager(abc.ABC):
         inbound_workers=1,
         outbound_workers=1,
         poll_workers=1,
-        callback_delegation_workers=None
+        callback_delegation_workers=None,
     ):
         self.outbound_queue = asyncio.Queue(queue_size)
         self.inbound_queue = asyncio.Queue(queue_size)
@@ -60,7 +61,10 @@ class AbstractPubSubManager(abc.ABC):
             await self._drain_queues()
 
         self.inbound_queue = None
+        metrics.INBOUND_QUEUE_SIZE.set(0)
+
         self.outbound_queue = None
+        metrics.OUTBOUND_QUEUE_SIZE.set(0)
 
         for worker in self.outbound_workers:
             worker.cancel()
@@ -82,15 +86,27 @@ class AbstractPubSubManager(abc.ABC):
         self.inbound_workers.clear()
         self.poll_workers.clear()
 
+        self.subscribed_topics_by_session.clear()
+        metrics.SUBSCRIBED_TOPICS.set(0)
+
+        self.callbacks_by_id.clear()
+        metrics.REGISTERED_CALLBACKS.set(0)
+
     async def _drain_queues(self):
         await self.inbound_queue.join()
         await self.outbound_queue.join()
 
     def send(self, topic_name: str, message):
         self.outbound_queue.put_nowait(QueuedMessage(topic_name, message))
+        metrics.OUTBOUND_QUEUE_SIZE.inc()
 
     async def subscribe_to_topic(self, topic_name: str, session_id=__all_sessions__):
-        await self._create_topic_subscription(topic_name)
+        if not self.is_subscribed_to_topic(topic_name):
+            logger.info(f"Creating subscription to topic '{topic_name}'")
+            await self._create_topic_subscription(topic_name)
+            metrics.SUBSCRIBED_TOPICS.inc()
+
+        logger.debug(f"Adding topic '{topic_name}' to session cache: {session_id}")
         self.subscribed_topics_by_session[session_id].add(topic_name)
 
     @abc.abstractmethod
@@ -98,13 +114,14 @@ class AbstractPubSubManager(abc.ABC):
         pass
 
     async def unsubscribe_from_topic(self, topic_name: str, session_id=__all_sessions__):
-        session_subscriptions = self.subscribed_topics_by_session[session_id]
-
-        if topic_name in session_subscriptions:
-            session_subscriptions.remove(topic_name)
+        if self.is_subscribed_to_topic(topic_name, session_id):
+            logger.debug(f"Removing topic '{topic_name}' from session cache: {session_id}")
+            self.subscribed_topics_by_session[session_id].remove(topic_name)
 
         if not self.is_subscribed_to_topic(topic_name):
+            logger.info(f"No more subscriptions to topic {topic_name}, cleaning up...")
             await self._cleanup_topic_subscription(topic_name)
+            metrics.SUBSCRIBED_TOPICS.dec()
 
     @property
     def subscribed_topics(self) -> Set[str]:
@@ -112,11 +129,11 @@ class AbstractPubSubManager(abc.ABC):
             [item for sublist in self.subscribed_topics_by_session.values() for item in sublist]
         )
 
-    def subscribed_topics_for_session(self, session_id: str) -> Set[str]:
-        return self.subscribed_topics_by_session[session_id]
-
-    def is_subscribed_to_topic(self, topic_name: str) -> bool:
-        return topic_name in self.subscribed_topics
+    def is_subscribed_to_topic(self, topic_name: str, session_id=None) -> bool:
+        if session_id is not None:
+            return topic_name in self.subscribed_topics_by_session[session_id]
+        else:
+            return topic_name in self.subscribed_topics
 
     @abc.abstractmethod
     async def _cleanup_topic_subscription(self, topic_name: str):
@@ -125,21 +142,29 @@ class AbstractPubSubManager(abc.ABC):
     def callback(self, fn: Callable) -> Callable:
         fn = ensure_async(fn)
         cb_id = str(uuid4())
+        logger.debug(f"Registering callback: '{cb_id}'")
         self.callbacks_by_id[cb_id] = fn
+        metrics.REGISTERED_CALLBACKS.inc()
         return partial(self._detach_callback, cb_id)
 
     def _detach_callback(self, cb_id: str):
-        if cb_id in self.callbacks_by_id:
+        callback = self.callbacks_by_id.get(cb_id)
+        if callback is not None:
+            logger.info(f"Detaching callback: '{cb_id}'")
             del self.callbacks_by_id[cb_id]
+            metrics.REGISTERED_CALLBACKS.dec()
 
     async def _outbound_worker(self):
         while True:
             message = await self.outbound_queue.get()
             try:
                 await self._publish(message)
+                metrics.OUTBOUND_MESSAGES_SENT.inc()
             except Exception:
                 logger.exception("Uncaught exception found while publishing message")
+                metrics.PUBLISH_MESSAGE_EXCEPTIONS.inc()
             self.outbound_queue.task_done()
+            metrics.OUTBOUND_QUEUE_SIZE.dec()
 
     @abc.abstractmethod
     async def _publish(self, message: QueuedMessage):
@@ -162,19 +187,29 @@ class AbstractPubSubManager(abc.ABC):
                 ]
             )
             self.inbound_queue.task_done()
+            metrics.INBOUND_QUEUE_SIZE.dec()
 
     async def _delegate_to_callbacks(self, contents, callback_ids: Iterator[UUID]):
         for id in callback_ids:
             cb = self.callbacks_by_id.get(id)
             if cb is not None:
                 try:
+                    enter = monotonic()
                     await cb(contents)
+                    diff = monotonic() - enter
+                    metrics.CALLBACK_DURATION.observe(diff)
                 except Exception:
                     logger.exception("Uncaught exception encountered while delegating to callback")
+                    metrics.CALLBACK_EXCEPTIONS.inc()
 
     @abc.abstractmethod
     async def _poll(self):
         pass
+
+    def schedule_for_delivery(self, message: QueuedMessage):
+        self.inbound_queue.put_nowait(message)
+        metrics.INBOUND_QUEUE_SIZE.inc()
+        metrics.INBOUND_MESSAGES_RECEIVED.inc()
 
     def get_session(self):
         return PubSubSession(self)
