@@ -36,5 +36,5 @@ class InMemoryPubSubManager(AbstractPubSubManager):
     async def _poll(self):
         msg = await self.message_queue.get()
         if msg.topic in self.subscribed_topics:
-            self.schedule_for_delivery(msg.topic, msg.contents)
+            self.schedule_for_delivery(msg.topic, msg.contents, msg.session_id)
         self.message_queue.task_done()

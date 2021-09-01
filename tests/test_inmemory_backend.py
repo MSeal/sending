@@ -27,7 +27,7 @@ class TestInMemoryPubSubManager:
         cache = []
         cb = partial(callback, cache)
         unsub = manager.register_callback(cb)
-        await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys(), "topic")
+        await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys())
         unsub()
         assert len(cache) == 1
         assert cache[-1] == "test cb"
@@ -36,9 +36,7 @@ class TestInMemoryPubSubManager:
         cache = []
         cb = partial(async_callback, cache)
         unsub = manager.register_callback(cb)
-        await manager._delegate_to_callbacks(
-            "test async_cb", manager.callbacks_by_id.keys(), "topic"
-        )
+        await manager._delegate_to_callbacks("test async_cb", manager.callbacks_by_id.keys())
         unsub()
         assert len(cache) == 1
         assert cache[-1] == "test async_cb"
@@ -93,7 +91,7 @@ class TestInMemoryPubSubManager:
             cache = []
             cb = partial(callback, cache)
             unsub = session.register_callback(cb)
-            await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys(), "topic")
+            await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys())
             unsub()
             assert len(cache) == 1
             assert cache[-1] == "test cb"
@@ -130,7 +128,7 @@ class TestInMemoryPubSubManager:
         assert len(manager.subscribed_topics) == 0
 
     async def test_inbound_hook(self, manager: InMemoryPubSubManager):
-        def hook(message):
+        def hook(contents):
             return "hooked message!"
 
         cache = []
@@ -144,7 +142,7 @@ class TestInMemoryPubSubManager:
         assert cache[0] == "hooked message!"
 
     async def test_outbound_hook(self, manager: InMemoryPubSubManager):
-        def hook(message):
+        def hook(contents):
             return "hooked message!"
 
         cache = []
@@ -158,8 +156,8 @@ class TestInMemoryPubSubManager:
         assert cache[0] == "hooked message!"
 
     async def test_predicated_callback(self, manager: InMemoryPubSubManager):
-        async def predicate(x, y):
-            return x == "topic"
+        async def predicate(content):
+            return content == "message"
 
         cache = []
         cb = partial(callback, cache)
@@ -175,3 +173,13 @@ class TestInMemoryPubSubManager:
         await manager._drain_queues()
         assert len(cache) == 1
         assert cache[0] == "message"
+
+    async def test_sending_to_session_callbacks(self, manager: InMemoryPubSubManager):
+        async with manager.get_session() as session:
+            cache = []
+            cb = partial(callback, cache)
+            session.register_callback(cb)
+            session.send_to_callbacks("message")
+            await manager._drain_queues()
+            assert len(cache) == 1
+            assert cache[0] == "message"
