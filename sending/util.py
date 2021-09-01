@@ -13,6 +13,6 @@ def ensure_async(fn: Callable) -> Coroutine:
         return fn
 
     async def wrapped(message):
-        fn(message)
+        return fn(message)
 
     return wrapped

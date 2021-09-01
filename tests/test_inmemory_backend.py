@@ -126,3 +126,31 @@ class TestInMemoryPubSubManager:
         assert len(manager.subscribed_topics) == 1
         await manager.unsubscribe_from_topic("topic")
         assert len(manager.subscribed_topics) == 0
+
+    async def test_inbound_hook(self, manager: InMemoryPubSubManager):
+        def hook(message):
+            return "hooked message!"
+
+        cache = []
+        cb = partial(callback, cache)
+        manager.register_callback(cb)
+        manager.inbound_message_hook = hook
+        await manager.subscribe_to_topic("topic")
+        manager.send("topic", "message")
+        await manager._drain_queues()
+        assert len(cache) == 1
+        assert cache[0] == "hooked message!"
+
+    async def test_outbound_hook(self, manager: InMemoryPubSubManager):
+        def hook(message):
+            return "hooked message!"
+
+        cache = []
+        cb = partial(callback, cache)
+        manager.register_callback(cb)
+        manager.outbound_message_hook = hook
+        await manager.subscribe_to_topic("topic")
+        manager.send("topic", "message")
+        await manager._drain_queues()
+        assert len(cache) == 1
+        assert cache[0] == "hooked message!"

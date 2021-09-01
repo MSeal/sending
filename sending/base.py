@@ -15,8 +15,6 @@ QueuedMessage = namedtuple("QueuedMessage", ["topic", "contents"])
 __all_sessions__ = object()
 
 
-# TODO: no more checking for messages we've seen before -- that can merged into
-# a data validation hook, make an example!
 class AbstractPubSubManager(abc.ABC):
     def __init__(self):
         self.outbound_queue: asyncio.Queue[QueuedMessage] = None
@@ -31,6 +29,9 @@ class AbstractPubSubManager(abc.ABC):
         self.subscribed_topics_by_session: Dict[str, Set] = defaultdict(set)
 
         self.callbacks_by_id: Dict[UUID, Coroutine] = {}
+
+        self.inbound_message_hook: Coroutine = None
+        self.outbound_message_hook: Coroutine = None
 
     async def initialize(
         self,
@@ -158,13 +159,17 @@ class AbstractPubSubManager(abc.ABC):
         while True:
             message = await self.outbound_queue.get()
             try:
+                if self.outbound_message_hook is not None:
+                    coro = ensure_async(self.outbound_message_hook)
+                    message = message._replace(contents=await coro(message))
                 await self._publish(message)
                 metrics.OUTBOUND_MESSAGES_SENT.inc()
             except Exception:
                 logger.exception("Uncaught exception found while publishing message")
                 metrics.PUBLISH_MESSAGE_EXCEPTIONS.inc()
-            self.outbound_queue.task_done()
-            metrics.OUTBOUND_QUEUE_SIZE.dec()
+            finally:
+                self.outbound_queue.task_done()
+                metrics.OUTBOUND_QUEUE_SIZE.dec()
 
     @abc.abstractmethod
     async def _publish(self, message: QueuedMessage):
@@ -178,16 +183,27 @@ class AbstractPubSubManager(abc.ABC):
     async def _inbound_worker(self):
         while True:
             message = await self.inbound_queue.get()
-            contents = message.contents
-            callback_ids = list(self.callbacks_by_id.keys())
-            await asyncio.gather(
-                *[
-                    self._delegate_to_callbacks(contents, slice)
-                    for slice in split_collection(callback_ids, self.callback_delegation_workers)
-                ]
-            )
-            self.inbound_queue.task_done()
-            metrics.INBOUND_QUEUE_SIZE.dec()
+
+            try:
+                if self.inbound_message_hook is not None:
+                    coro = ensure_async(self.inbound_message_hook)
+                    contents = await coro(message)
+                else:
+                    contents = message.contents
+                callback_ids = list(self.callbacks_by_id.keys())
+                await asyncio.gather(
+                    *[
+                        self._delegate_to_callbacks(contents, slice)
+                        for slice in split_collection(
+                            callback_ids, self.callback_delegation_workers
+                        )
+                    ]
+                )
+            except Exception:
+                logger.exception("Uncaught exception found while processing inbound message")
+            finally:
+                self.inbound_queue.task_done()
+                metrics.INBOUND_QUEUE_SIZE.dec()
 
     async def _delegate_to_callbacks(self, contents, callback_ids: Iterator[UUID]):
         for id in callback_ids:
