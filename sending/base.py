@@ -222,7 +222,8 @@ class AbstractPubSubManager(abc.ABC):
     async def _poll(self):
         pass
 
-    def schedule_for_delivery(self, message: QueuedMessage):
+    def schedule_for_delivery(self, topic, contents):
+        message = QueuedMessage(topic, contents)
         self.inbound_queue.put_nowait(message)
         metrics.INBOUND_QUEUE_SIZE.inc()
         metrics.INBOUND_MESSAGES_RECEIVED.inc()
