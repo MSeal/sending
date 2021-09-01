@@ -1,3 +1,4 @@
+"""Metrics for monitoring pub-sub operations"""
 from prometheus_client import Counter, Gauge, Histogram
 
 NAMESPACE = "sending"

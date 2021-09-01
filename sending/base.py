@@ -1,3 +1,5 @@
+"""This module defines an abstract PubSubManager class that must be used when
+   implementing custom managers or other features."""
 import abc
 import asyncio
 from collections import defaultdict, namedtuple
@@ -17,6 +19,15 @@ __all_sessions__ = object()
 
 
 class AbstractPubSubManager(abc.ABC):
+    """
+    Manages the publish-subscribe workflow.
+
+    This abstract class provides a common base class for a publish-subscribe
+    workflow and the management of components in the workflow.
+
+    The manager keeps track of message queues and workers that serve clients
+    subscribed to a publisher's feed of messages.
+    """
     def __init__(self):
         self.outbound_queue: asyncio.Queue[QueuedMessage] = None
         self.outbound_workers: List[asyncio.Task] = []
@@ -44,6 +55,7 @@ class AbstractPubSubManager(abc.ABC):
         poll_workers=1,
         callback_delegation_workers=None,
     ):
+        """Initialize a pub-sub channel, specifically its queues and workers."""
         self.outbound_queue = asyncio.Queue(queue_size)
         self.inbound_queue = asyncio.Queue(queue_size)
         self.callback_delegation_workers = (
@@ -60,6 +72,7 @@ class AbstractPubSubManager(abc.ABC):
             self.poll_workers.append(asyncio.create_task(self._poll_loop()))
 
     async def shutdown(self, now=False):
+        """Shut down a pub-sub channel and its related queues and workers"""
         if not now:
             await self._drain_queues()
 
@@ -101,10 +114,12 @@ class AbstractPubSubManager(abc.ABC):
         await self.outbound_queue.join()
 
     def send(self, topic_name: str, message):
+        """Sends a message to a specific topic's queue."""
         self.outbound_queue.put_nowait(QueuedMessage(topic_name, message, None))
         metrics.OUTBOUND_QUEUE_SIZE.inc()
 
     async def subscribe_to_topic(self, topic_name: str, _session_id=__all_sessions__):
+        """Subscribe to a publisher's topic"""
         if not self.is_subscribed_to_topic(topic_name):
             logger.info(f"Creating subscription to topic '{topic_name}'")
             await self._create_topic_subscription(topic_name)
@@ -118,6 +133,7 @@ class AbstractPubSubManager(abc.ABC):
         pass
 
     async def unsubscribe_from_topic(self, topic_name: str, _session_id=__all_sessions__):
+        """Unsubscribe from a specific topic's message feed."""
         if self.is_subscribed_to_topic(topic_name, _session_id):
             logger.debug(f"Removing topic '{topic_name}' from session cache: {_session_id}")
             self.subscribed_topics_by_session[_session_id].remove(topic_name)
@@ -134,6 +150,7 @@ class AbstractPubSubManager(abc.ABC):
         )
 
     def is_subscribed_to_topic(self, topic_name: str, _session_id=None) -> bool:
+        """Check if a client is subscribed to a specified topic."""
         if _session_id is not None:
             return topic_name in self.subscribed_topics_by_session[_session_id]
         else:
@@ -146,6 +163,7 @@ class AbstractPubSubManager(abc.ABC):
     def register_callback(
         self, fn: Callable, on_predicate: Callable = None, _session_id=None
     ) -> Callable:
+        """Register a subscriber callback with the publisher."""
         fn = ensure_async(fn)
         if on_predicate is not None:
             on_predicate = ensure_async(on_predicate)
@@ -254,12 +272,14 @@ class AbstractPubSubManager(abc.ABC):
         pass
 
     def schedule_for_delivery(self, topic, contents, _session_id=None):
+        """Use contents to create and queue a message for the topic's feed."""
         message = QueuedMessage(topic, contents, _session_id)
         self.inbound_queue.put_nowait(message)
         metrics.INBOUND_QUEUE_SIZE.inc()
         metrics.INBOUND_MESSAGES_RECEIVED.inc()
 
     def get_session(self):
+        """Get the pub-sub manager's current session."""
         return PubSubSession(self)
 
 
@@ -270,6 +290,8 @@ class PubSubSession:
         self._unregister_callbacks_by_id: Dict[str, Callable] = {}
 
     def send_to_callbacks(self, contents):
+        """Send contents from a publisher to all subscribed callbacks."""
+
         # We don't currently use the topic name in the inbound worker
         # so setting this to None should be okay for now.
         self.parent.schedule_for_delivery(None, contents, self.id)
@@ -279,12 +301,15 @@ class PubSubSession:
         return self.parent.subscribed_topics_by_session[self.id]
 
     def is_subscribed_to_topic(self, topic_name: str) -> bool:
+        """Check if a client is subscribed to a specified topic."""
         return topic_name in self.subscribed_topics
 
     async def subscribe_to_topic(self, topic_name: str):
+        """Subscribe to the message feed for a topic."""
         return await self.parent.subscribe_to_topic(topic_name, self.id)
 
     async def unsubscribe_from_topic(self, topic_name: str):
+        """Unsubscribe from the message feed for a topic."""
         return await self.parent.unsubscribe_from_topic(topic_name, self.id)
 
     def register_callback(self, fn: Callable, on_predicate: Callable = None):
@@ -292,6 +317,7 @@ class PubSubSession:
         unregister_callback = self.parent.register_callback(
             fn, on_predicate=on_predicate, _session_id=self.id
         )
+        """Register a subscriber callback with the publisher."""
         self._unregister_callbacks_by_id[unregister_callback_id] = unregister_callback
         return partial(self._detach_callback, unregister_callback_id)
 
@@ -306,6 +332,7 @@ class PubSubSession:
             return parent_detach_callback()
 
     async def stop(self):
+        """Stop the processes and clear callbacks"""
         for cb in self._unregister_callbacks_by_id.values():
             cb()
 
