@@ -1,6 +1,7 @@
 from functools import partial
 
 import pytest
+
 from sending.backends.memory import InMemoryPubSubManager
 from sending.base import __all_sessions__
 

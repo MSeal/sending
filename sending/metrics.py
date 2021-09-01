@@ -18,7 +18,8 @@ OUTBOUND_MESSAGES_SENT = Counter(
 )
 
 PUBLISH_MESSAGE_EXCEPTIONS = Counter(
-    "publish_message_failures", "Total number of uncaught exceptions from message publication"
+    "publish_message_failures",
+    "Total number of uncaught exceptions from message publication",
 )
 
 SUBSCRIBED_TOPICS = Gauge(
@@ -26,11 +27,17 @@ SUBSCRIBED_TOPICS = Gauge(
 )
 
 REGISTERED_CALLBACKS = Gauge(
-    "registered_callbacks", "The current number of registered callbacks", namespace=NAMESPACE
+    "registered_callbacks",
+    "The current number of registered callbacks",
+    namespace=NAMESPACE,
 )
 CALLBACK_DURATION = Histogram(
-    "callback_duration_seconds", "Time taken for a callback to resolve", namespace=NAMESPACE
+    "callback_duration_seconds",
+    "Time taken for a callback to resolve",
+    namespace=NAMESPACE,
 )
 CALLBACK_EXCEPTIONS = Counter(
-    "callback_exceptions", "The number of uncaught callback exceptions", namespace=NAMESPACE
+    "callback_exceptions",
+    "The number of uncaught callback exceptions",
+    namespace=NAMESPACE,
 )
