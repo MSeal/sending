@@ -12,7 +12,7 @@ def ensure_async(fn: Callable) -> Coroutine:
     if inspect.iscoroutinefunction(fn):
         return fn
 
-    async def wrapped(message):
-        return fn(message)
+    async def wrapped(*args, **kwargs):
+        return fn(*args, **kwargs)
 
     return wrapped

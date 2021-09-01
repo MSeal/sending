@@ -27,7 +27,7 @@ class TestInMemoryPubSubManager:
         cache = []
         cb = partial(callback, cache)
         unsub = manager.register_callback(cb)
-        await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys())
+        await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys(), "topic")
         unsub()
         assert len(cache) == 1
         assert cache[-1] == "test cb"
@@ -36,7 +36,9 @@ class TestInMemoryPubSubManager:
         cache = []
         cb = partial(async_callback, cache)
         unsub = manager.register_callback(cb)
-        await manager._delegate_to_callbacks("test async_cb", manager.callbacks_by_id.keys())
+        await manager._delegate_to_callbacks(
+            "test async_cb", manager.callbacks_by_id.keys(), "topic"
+        )
         unsub()
         assert len(cache) == 1
         assert cache[-1] == "test async_cb"
@@ -91,7 +93,7 @@ class TestInMemoryPubSubManager:
             cache = []
             cb = partial(callback, cache)
             unsub = session.register_callback(cb)
-            await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys())
+            await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys(), "topic")
             unsub()
             assert len(cache) == 1
             assert cache[-1] == "test cb"
@@ -154,3 +156,22 @@ class TestInMemoryPubSubManager:
         await manager._drain_queues()
         assert len(cache) == 1
         assert cache[0] == "hooked message!"
+
+    async def test_predicated_callback(self, manager: InMemoryPubSubManager):
+        async def predicate(x, y):
+            return x == "topic"
+
+        cache = []
+        cb = partial(callback, cache)
+        manager.register_callback(cb, on_predicate=predicate)
+
+        await manager.subscribe_to_topic("other_topic")
+        manager.send("other_topic", "other message")
+        await manager._drain_queues()
+        assert len(cache) == 0
+
+        await manager.subscribe_to_topic("topic")
+        manager.send("topic", "message")
+        await manager._drain_queues()
+        assert len(cache) == 1
+        assert cache[0] == "message"

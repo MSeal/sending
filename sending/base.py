@@ -11,6 +11,7 @@ from .logging import logger
 from .util import ensure_async, split_collection
 
 QueuedMessage = namedtuple("QueuedMessage", ["topic", "contents"])
+Callback = namedtuple("Callback", ["method", "predicate"])
 
 __all_sessions__ = object()
 
@@ -28,7 +29,7 @@ class AbstractPubSubManager(abc.ABC):
         self.poll_workers: List[asyncio.Task] = []
         self.subscribed_topics_by_session: Dict[str, Set] = defaultdict(set)
 
-        self.callbacks_by_id: Dict[UUID, Coroutine] = {}
+        self.callbacks_by_id: Dict[UUID, Callback] = {}
 
         self.inbound_message_hook: Coroutine = None
         self.outbound_message_hook: Coroutine = None
@@ -55,7 +56,7 @@ class AbstractPubSubManager(abc.ABC):
             self.inbound_workers.append(asyncio.create_task(self._inbound_worker()))
 
         for i in range(poll_workers):
-            self.poll_workers.append(asyncio.create_task(self._poll()))
+            self.poll_workers.append(asyncio.create_task(self._poll_loop()))
 
     async def shutdown(self, now=False):
         if not now:
@@ -140,11 +141,13 @@ class AbstractPubSubManager(abc.ABC):
     async def _cleanup_topic_subscription(self, topic_name: str):
         pass
 
-    def register_callback(self, fn: Callable) -> Callable:
+    def register_callback(self, fn: Callable, on_predicate: Callable = None) -> Callable:
         fn = ensure_async(fn)
+        if on_predicate is not None:
+            on_predicate = ensure_async(on_predicate)
         cb_id = str(uuid4())
         logger.debug(f"Registering callback: '{cb_id}'")
-        self.callbacks_by_id[cb_id] = fn
+        self.callbacks_by_id[cb_id] = Callback(fn, on_predicate)
         metrics.REGISTERED_CALLBACKS.inc()
         return partial(self._detach_callback, cb_id)
 
@@ -193,7 +196,7 @@ class AbstractPubSubManager(abc.ABC):
                 callback_ids = list(self.callbacks_by_id.keys())
                 await asyncio.gather(
                     *[
-                        self._delegate_to_callbacks(contents, slice)
+                        self._delegate_to_callbacks(contents, slice, message.topic)
                         for slice in split_collection(
                             callback_ids, self.callback_delegation_workers
                         )
@@ -205,18 +208,29 @@ class AbstractPubSubManager(abc.ABC):
                 self.inbound_queue.task_done()
                 metrics.INBOUND_QUEUE_SIZE.dec()
 
-    async def _delegate_to_callbacks(self, contents, callback_ids: Iterator[UUID]):
+    async def _delegate_to_callbacks(self, contents, callback_ids: Iterator[UUID], topic_name):
         for id in callback_ids:
             cb = self.callbacks_by_id.get(id)
             if cb is not None:
                 try:
-                    enter = monotonic()
-                    await cb(contents)
-                    diff = monotonic() - enter
-                    metrics.CALLBACK_DURATION.observe(diff)
+                    if cb.predicate is None or await cb.predicate(topic_name, contents):
+                        logger.debug(f"Delegating to callback: {id}")
+                        enter = monotonic()
+                        await cb.method(contents)
+                        diff = monotonic() - enter
+                        metrics.CALLBACK_DURATION.observe(diff)
+                    else:
+                        logger.debug(f"Skipping callback {id} because predicate returned False")
                 except Exception:
                     logger.exception("Uncaught exception encountered while delegating to callback")
                     metrics.CALLBACK_EXCEPTIONS.inc()
+
+    async def _poll_loop(self):
+        while True:
+            try:
+                await self._poll()
+            except Exception:
+                logger.exception("Uncaught exception encountered while polling backend")
 
     @abc.abstractmethod
     async def _poll(self):
