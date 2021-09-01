@@ -1,3 +1,4 @@
+"""Logging configuration"""
 import logging
 import os
 
