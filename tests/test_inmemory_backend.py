@@ -26,7 +26,7 @@ class TestInMemoryPubSubManager:
     async def test_register_callbacks(self, manager: InMemoryPubSubManager):
         cache = []
         cb = partial(callback, cache)
-        unsub = manager.callback(cb)
+        unsub = manager.register_callback(cb)
         await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys())
         unsub()
         assert len(cache) == 1
@@ -35,7 +35,7 @@ class TestInMemoryPubSubManager:
     async def test_register_callbacks_async(self, manager: InMemoryPubSubManager):
         cache = []
         cb = partial(async_callback, cache)
-        unsub = manager.callback(cb)
+        unsub = manager.register_callback(cb)
         await manager._delegate_to_callbacks("test async_cb", manager.callbacks_by_id.keys())
         unsub()
         assert len(cache) == 1
@@ -45,7 +45,7 @@ class TestInMemoryPubSubManager:
         cache = []
         cb = partial(async_callback, cache)
         await manager.subscribe_to_topic("topic")
-        unsub = manager.callback(cb)
+        unsub = manager.register_callback(cb)
         manager.send("topic", "hello")
         await manager._drain_queues()
         unsub()
@@ -56,7 +56,7 @@ class TestInMemoryPubSubManager:
     async def test_send_to_unsubscribed_topic(self, manager: InMemoryPubSubManager):
         cache = []
         cb = partial(callback, cache)
-        unsub = manager.callback(cb)
+        unsub = manager.register_callback(cb)
         manager.send("topic", "hello")
         unsub()
         await manager._drain_queues()
@@ -90,7 +90,7 @@ class TestInMemoryPubSubManager:
         async with manager.get_session() as session:
             cache = []
             cb = partial(callback, cache)
-            unsub = session.callback(cb)
+            unsub = session.register_callback(cb)
             await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys())
             unsub()
             assert len(cache) == 1
@@ -99,7 +99,7 @@ class TestInMemoryPubSubManager:
     async def test_session_async_exit(self, manager: InMemoryPubSubManager):
         async with manager.get_session() as session:
             cb = partial(callback, [])
-            session.callback(cb)
+            session.register_callback(cb)
             await session.subscribe_to_topic("topic")
 
         assert not session.is_subscribed_to_topic("topic")
@@ -110,7 +110,7 @@ class TestInMemoryPubSubManager:
     async def test_manager_shutdown(self, manager: InMemoryPubSubManager):
         cb = partial(async_callback, [])
         await manager.subscribe_to_topic("topic")
-        manager.callback(cb)
+        manager.register_callback(cb)
         await manager.shutdown(now=False)
         assert manager.inbound_queue is None
         assert manager.outbound_queue is None

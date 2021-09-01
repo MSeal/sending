@@ -139,7 +139,7 @@ class AbstractPubSubManager(abc.ABC):
     async def _cleanup_topic_subscription(self, topic_name: str):
         pass
 
-    def callback(self, fn: Callable) -> Callable:
+    def register_callback(self, fn: Callable) -> Callable:
         fn = ensure_async(fn)
         cb_id = str(uuid4())
         logger.debug(f"Registering callback: '{cb_id}'")
@@ -234,9 +234,9 @@ class PubSubSession:
     async def unsubscribe_from_topic(self, topic_name: str):
         return await self.parent.unsubscribe_from_topic(topic_name, self.id)
 
-    def callback(self, fn: Callable):
+    def register_callback(self, fn: Callable):
         unregister_callback_id = str(uuid4())
-        unregister_callback = self.parent.callback(fn)
+        unregister_callback = self.parent.register_callback(fn)
         self._unregister_callbacks_by_id[unregister_callback_id] = unregister_callback
         return partial(self._detach_callback, unregister_callback_id)
 
