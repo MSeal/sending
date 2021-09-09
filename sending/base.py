@@ -28,6 +28,7 @@ class AbstractPubSubManager(abc.ABC):
     The manager keeps track of message queues and workers that serve clients
     subscribed to a publisher's feed of messages.
     """
+
     def __init__(self):
         self.outbound_queue: asyncio.Queue[QueuedMessage] = None
         self.outbound_workers: List[asyncio.Task] = []
@@ -266,6 +267,8 @@ class AbstractPubSubManager(abc.ABC):
                 await self._poll()
             except Exception:
                 logger.exception("Uncaught exception encountered while polling backend")
+            finally:
+                await asyncio.sleep(0)
 
     @abc.abstractmethod
     async def _poll(self):
