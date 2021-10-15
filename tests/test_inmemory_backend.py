@@ -3,7 +3,7 @@ from functools import partial
 import pytest
 
 from sending.backends.memory import InMemoryPubSubManager
-from sending.base import __all_sessions__
+from sending.base import __not_in_a_session__, QueuedMessage
 
 
 @pytest.fixture()
@@ -27,8 +27,11 @@ class TestInMemoryPubSubManager:
     async def test_register_callbacks(self, manager: InMemoryPubSubManager):
         cache = []
         cb = partial(callback, cache)
+        await manager.subscribe_to_topic("test")
         unsub = manager.register_callback(cb)
-        await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys())
+        await manager._delegate_to_callbacks(
+            QueuedMessage("test", "test cb", None), manager.callbacks_by_id.keys()
+        )
         unsub()
         assert len(cache) == 1
         assert cache[-1] == "test cb"
@@ -36,8 +39,11 @@ class TestInMemoryPubSubManager:
     async def test_register_callbacks_async(self, manager: InMemoryPubSubManager):
         cache = []
         cb = partial(async_callback, cache)
+        await manager.subscribe_to_topic("test")
         unsub = manager.register_callback(cb)
-        await manager._delegate_to_callbacks("test async_cb", manager.callbacks_by_id.keys())
+        await manager._delegate_to_callbacks(
+            QueuedMessage("test", "test async_cb", None), manager.callbacks_by_id.keys()
+        )
         unsub()
         assert len(cache) == 1
         assert cache[-1] == "test async_cb"
@@ -68,11 +74,11 @@ class TestInMemoryPubSubManager:
         assert len(manager.subscribed_topics) == 0
 
     async def test_subscriptions_across_multiple_sessions(self, manager: InMemoryPubSubManager):
-        await manager.subscribe_to_topic("topic", __all_sessions__)
+        await manager.subscribe_to_topic("topic", __not_in_a_session__)
         await manager.subscribe_to_topic("topic", "test-session")
         assert manager.subscribed_topics == {"topic"}
         assert manager.is_subscribed_to_topic("topic")
-        await manager.unsubscribe_from_topic("topic", __all_sessions__)
+        await manager.unsubscribe_from_topic("topic", __not_in_a_session__)
         assert manager.is_subscribed_to_topic("topic")
         await manager.unsubscribe_from_topic("topic", "test-session")
         assert len(manager.subscribed_topics) == 0
@@ -91,8 +97,11 @@ class TestInMemoryPubSubManager:
         async with manager.get_session() as session:
             cache = []
             cb = partial(callback, cache)
+            await session.subscribe_to_topic("test")
             unsub = session.register_callback(cb)
-            await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys())
+            await manager._delegate_to_callbacks(
+                QueuedMessage("test", "test cb", None), manager.callbacks_by_id.keys()
+            )
             unsub()
             assert len(cache) == 1
             assert cache[-1] == "test cb"
@@ -157,8 +166,8 @@ class TestInMemoryPubSubManager:
         assert cache[0] == "hooked message!"
 
     async def test_predicated_callback(self, manager: InMemoryPubSubManager):
-        async def predicate(content):
-            return content == "message"
+        async def predicate(message):
+            return message.contents == "message"
 
         cache = []
         cb = partial(callback, cache)
@@ -184,3 +193,39 @@ class TestInMemoryPubSubManager:
             await manager._drain_queues()
             assert len(cache) == 1
             assert cache[0] == "message"
+
+
+@pytest.mark.asyncio
+class TestPubSubSession:
+    @pytest.mark.parametrize("use_isolated_session", [True, False])
+    async def test_when_parent_is_subscribed_to_multiple_topics_the_session_only_receives_messages_its_subscribed_to(
+        self, manager, use_isolated_session
+    ):
+        cache1 = []
+        cb1 = partial(async_callback, cache1)
+        cache2 = []
+        cb2 = partial(async_callback, cache2)
+
+        session1 = manager.get_session(use_isolated_session)
+        session2 = manager.get_session(use_isolated_session)
+
+        session1.register_callback(cb1)
+        session2.register_callback(cb2)
+        await session1.subscribe_to_topic("files/1")
+        await session2.subscribe_to_topic("files/2")
+        await manager.subscribe_to_topic("global_notifications")
+
+        manager.send("files/1", "hello")
+        manager.send("files/2", "foo")
+        manager.send("global_notifications", "hello world")
+        await manager._drain_queues()
+
+        expected_cache1 = ["hello"]
+        expected_cache2 = ["foo"]
+
+        if not use_isolated_session:
+            expected_cache1.append("hello world")
+            expected_cache2.append("hello world")
+
+        assert cache1 == expected_cache1
+        assert cache2 == expected_cache2

@@ -15,7 +15,7 @@ from .util import ensure_async, split_collection
 QueuedMessage = namedtuple("QueuedMessage", ["topic", "contents", "session_id"])
 Callback = namedtuple("Callback", ["method", "predicate"])
 
-__all_sessions__ = object()
+__not_in_a_session__ = object()
 
 
 class AbstractPubSubManager(abc.ABC):
@@ -119,7 +119,7 @@ class AbstractPubSubManager(abc.ABC):
         self.outbound_queue.put_nowait(QueuedMessage(topic_name, message, None))
         metrics.OUTBOUND_QUEUE_SIZE.inc()
 
-    async def subscribe_to_topic(self, topic_name: str, _session_id=__all_sessions__):
+    async def subscribe_to_topic(self, topic_name: str, _session_id=__not_in_a_session__):
         """Subscribe to a publisher's topic"""
         if not self.is_subscribed_to_topic(topic_name):
             logger.info(f"Creating subscription to topic '{topic_name}'")
@@ -133,7 +133,7 @@ class AbstractPubSubManager(abc.ABC):
     async def _create_topic_subscription(self, topic_name: str):
         pass
 
-    async def unsubscribe_from_topic(self, topic_name: str, _session_id=__all_sessions__):
+    async def unsubscribe_from_topic(self, topic_name: str, _session_id=__not_in_a_session__):
         """Unsubscribe from a specific topic's message feed."""
         if self.is_subscribed_to_topic(topic_name, _session_id):
             logger.debug(f"Removing topic '{topic_name}' from session cache: {_session_id}")
@@ -221,9 +221,7 @@ class AbstractPubSubManager(abc.ABC):
             try:
                 if self.inbound_message_hook is not None:
                     coro = ensure_async(self.inbound_message_hook)
-                    contents = await coro(message.contents)
-                else:
-                    contents = message.contents
+                    message = message._replace(contents=await coro(message.contents))
 
                 if message.session_id is None:
                     callback_ids = list(self.callbacks_by_id.keys())
@@ -232,7 +230,7 @@ class AbstractPubSubManager(abc.ABC):
 
                 await asyncio.gather(
                     *[
-                        self._delegate_to_callbacks(contents, slice)
+                        self._delegate_to_callbacks(message, slice)
                         for slice in split_collection(
                             callback_ids, self.callback_delegation_workers
                         )
@@ -244,15 +242,15 @@ class AbstractPubSubManager(abc.ABC):
                 self.inbound_queue.task_done()
                 metrics.INBOUND_QUEUE_SIZE.dec()
 
-    async def _delegate_to_callbacks(self, contents, callback_ids: Iterator[UUID]):
+    async def _delegate_to_callbacks(self, message: QueuedMessage, callback_ids: Iterator[UUID]):
         for id in callback_ids:
             cb = self.callbacks_by_id.get(id)
             if cb is not None:
                 try:
-                    if cb.predicate is None or await cb.predicate(contents):
+                    if cb.predicate is None or await cb.predicate(message):
                         logger.debug(f"Delegating to callback: {id}")
                         enter = monotonic()
-                        await cb.method(contents)
+                        await cb.method(message.contents)
                         diff = monotonic() - enter
                         metrics.CALLBACK_DURATION.observe(diff)
                     else:
@@ -281,9 +279,9 @@ class AbstractPubSubManager(abc.ABC):
         metrics.INBOUND_QUEUE_SIZE.inc()
         metrics.INBOUND_MESSAGES_RECEIVED.inc()
 
-    def get_session(self):
+    def get_session(self, use_isolated_session: bool = False):
         """Get the pub-sub manager's current session."""
-        return PubSubSession(self)
+        return PubSubSession(self) if use_isolated_session else PubSubSessionWithParent(self)
 
 
 class PubSubSession:
@@ -316,9 +314,15 @@ class PubSubSession:
         return await self.parent.unsubscribe_from_topic(topic_name, self.id)
 
     def register_callback(self, fn: Callable, on_predicate: Callable = None):
+        on_predicate = ensure_async(on_predicate) if on_predicate else ensure_async(lambda _: True)
+
+        async def combined_predicates(message: QueuedMessage):
+            topic_matches = message.topic is None or self.is_subscribed_to_topic(message.topic)
+            return topic_matches and await on_predicate(message)
+
         unregister_callback_id = str(uuid4())
         unregister_callback = self.parent.register_callback(
-            fn, on_predicate=on_predicate, _session_id=self.id
+            fn, on_predicate=combined_predicates, _session_id=self.id
         )
         """Register a subscriber callback with the publisher."""
         self._unregister_callbacks_by_id[unregister_callback_id] = unregister_callback
@@ -350,3 +354,10 @@ class PubSubSession:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.stop()
+
+
+class PubSubSessionWithParent(PubSubSession):
+    @property
+    def subscribed_topics(self) -> Set[str]:
+        all_session_topics = self.parent.subscribed_topics_by_session[__not_in_a_session__]
+        return super().subscribed_topics | all_session_topics
