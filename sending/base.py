@@ -15,7 +15,7 @@ from .util import ensure_async, split_collection
 QueuedMessage = namedtuple("QueuedMessage", ["topic", "contents", "session_id"])
 Callback = namedtuple("Callback", ["method", "predicate"])
 
-__all_sessions__ = object()
+__not_in_a_session__ = object()
 
 
 class AbstractPubSubManager(abc.ABC):
@@ -119,7 +119,7 @@ class AbstractPubSubManager(abc.ABC):
         self.outbound_queue.put_nowait(QueuedMessage(topic_name, message, None))
         metrics.OUTBOUND_QUEUE_SIZE.inc()
 
-    async def subscribe_to_topic(self, topic_name: str, _session_id=__all_sessions__):
+    async def subscribe_to_topic(self, topic_name: str, _session_id=__not_in_a_session__):
         """Subscribe to a publisher's topic"""
         if not self.is_subscribed_to_topic(topic_name):
             logger.info(f"Creating subscription to topic '{topic_name}'")
@@ -133,7 +133,7 @@ class AbstractPubSubManager(abc.ABC):
     async def _create_topic_subscription(self, topic_name: str):
         pass
 
-    async def unsubscribe_from_topic(self, topic_name: str, _session_id=__all_sessions__):
+    async def unsubscribe_from_topic(self, topic_name: str, _session_id=__not_in_a_session__):
         """Unsubscribe from a specific topic's message feed."""
         if self.is_subscribed_to_topic(topic_name, _session_id):
             logger.debug(f"Removing topic '{topic_name}' from session cache: {_session_id}")
@@ -279,9 +279,9 @@ class AbstractPubSubManager(abc.ABC):
         metrics.INBOUND_QUEUE_SIZE.inc()
         metrics.INBOUND_MESSAGES_RECEIVED.inc()
 
-    def get_session(self):
+    def get_session(self, use_isolated_session: bool = False):
         """Get the pub-sub manager's current session."""
-        return PubSubSession(self)
+        return PubSubSession(self) if use_isolated_session else PubSubSessionWithParent(self)
 
 
 class PubSubSession:
@@ -299,8 +299,7 @@ class PubSubSession:
 
     @property
     def subscribed_topics(self) -> Set[str]:
-        all_session_topics = self.parent.subscribed_topics_by_session[__all_sessions__]
-        return self.parent.subscribed_topics_by_session[self.id] | all_session_topics
+        return self.parent.subscribed_topics_by_session[self.id]
 
     def is_subscribed_to_topic(self, topic_name: str) -> bool:
         """Check if a client is subscribed to a specified topic."""
@@ -355,3 +354,10 @@ class PubSubSession:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.stop()
+
+
+class PubSubSessionWithParent(PubSubSession):
+    @property
+    def subscribed_topics(self) -> Set[str]:
+        all_session_topics = self.parent.subscribed_topics_by_session[__not_in_a_session__]
+        return super().subscribed_topics | all_session_topics

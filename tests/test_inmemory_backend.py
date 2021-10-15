@@ -3,7 +3,7 @@ from functools import partial
 import pytest
 
 from sending.backends.memory import InMemoryPubSubManager
-from sending.base import __all_sessions__, QueuedMessage
+from sending.base import __not_in_a_session__, QueuedMessage
 
 
 @pytest.fixture()
@@ -74,11 +74,11 @@ class TestInMemoryPubSubManager:
         assert len(manager.subscribed_topics) == 0
 
     async def test_subscriptions_across_multiple_sessions(self, manager: InMemoryPubSubManager):
-        await manager.subscribe_to_topic("topic", __all_sessions__)
+        await manager.subscribe_to_topic("topic", __not_in_a_session__)
         await manager.subscribe_to_topic("topic", "test-session")
         assert manager.subscribed_topics == {"topic"}
         assert manager.is_subscribed_to_topic("topic")
-        await manager.unsubscribe_from_topic("topic", __all_sessions__)
+        await manager.unsubscribe_from_topic("topic", __not_in_a_session__)
         assert manager.is_subscribed_to_topic("topic")
         await manager.unsubscribe_from_topic("topic", "test-session")
         assert len(manager.subscribed_topics) == 0
@@ -197,16 +197,17 @@ class TestInMemoryPubSubManager:
 
 @pytest.mark.asyncio
 class TestPubSubSession:
+    @pytest.mark.parametrize("use_isolated_session", [True, False])
     async def test_when_parent_is_subscribed_to_multiple_topics_the_session_only_receives_messages_its_subscribed_to(
-        self, manager
+        self, manager, use_isolated_session
     ):
         cache1 = []
         cb1 = partial(async_callback, cache1)
         cache2 = []
         cb2 = partial(async_callback, cache2)
 
-        session1 = manager.get_session()
-        session2 = manager.get_session()
+        session1 = manager.get_session(use_isolated_session)
+        session2 = manager.get_session(use_isolated_session)
 
         session1.register_callback(cb1)
         session2.register_callback(cb2)
@@ -219,5 +220,12 @@ class TestPubSubSession:
         manager.send("global_notifications", "hello world")
         await manager._drain_queues()
 
-        assert cache1 == ["hello", "hello world"]
-        assert cache2 == ["foo", "hello world"]
+        expected_cache1 = ["hello"]
+        expected_cache2 = ["foo"]
+
+        if not use_isolated_session:
+            expected_cache1.append("hello world")
+            expected_cache2.append("hello world")
+
+        assert cache1 == expected_cache1
+        assert cache2 == expected_cache2
