@@ -299,7 +299,8 @@ class PubSubSession:
 
     @property
     def subscribed_topics(self) -> Set[str]:
-        return self.parent.subscribed_topics_by_session[self.id]
+        all_session_topics = self.parent.subscribed_topics_by_session[__all_sessions__]
+        return self.parent.subscribed_topics_by_session[self.id] | all_session_topics
 
     def is_subscribed_to_topic(self, topic_name: str) -> bool:
         """Check if a client is subscribed to a specified topic."""
@@ -317,7 +318,7 @@ class PubSubSession:
         on_predicate = ensure_async(on_predicate) if on_predicate else ensure_async(lambda _: True)
 
         async def combined_predicates(message: QueuedMessage):
-            topic_matches = message.topic is None or message.topic in self.subscribed_topics
+            topic_matches = message.topic is None or self.is_subscribed_to_topic(message.topic)
             return topic_matches and await on_predicate(message)
 
         unregister_callback_id = str(uuid4())

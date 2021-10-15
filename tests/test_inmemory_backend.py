@@ -212,10 +212,12 @@ class TestPubSubSession:
         session2.register_callback(cb2)
         await session1.subscribe_to_topic("files/1")
         await session2.subscribe_to_topic("files/2")
+        await manager.subscribe_to_topic("global_notifications")
 
         manager.send("files/1", "hello")
         manager.send("files/2", "foo")
+        manager.send("global_notifications", "hello world")
         await manager._drain_queues()
 
-        assert cache1 == ["hello"]
-        assert cache2 == ["foo"]
+        assert cache1 == ["hello", "hello world"]
+        assert cache2 == ["foo", "hello world"]
