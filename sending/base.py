@@ -221,9 +221,7 @@ class AbstractPubSubManager(abc.ABC):
             try:
                 if self.inbound_message_hook is not None:
                     coro = ensure_async(self.inbound_message_hook)
-                    contents = await coro(message.contents)
-                else:
-                    contents = message.contents
+                    message = message._replace(contents=await coro(message.contents))
 
                 if message.session_id is None:
                     callback_ids = list(self.callbacks_by_id.keys())
@@ -232,7 +230,7 @@ class AbstractPubSubManager(abc.ABC):
 
                 await asyncio.gather(
                     *[
-                        self._delegate_to_callbacks(contents, slice)
+                        self._delegate_to_callbacks(message, slice)
                         for slice in split_collection(
                             callback_ids, self.callback_delegation_workers
                         )
@@ -244,15 +242,15 @@ class AbstractPubSubManager(abc.ABC):
                 self.inbound_queue.task_done()
                 metrics.INBOUND_QUEUE_SIZE.dec()
 
-    async def _delegate_to_callbacks(self, contents, callback_ids: Iterator[UUID]):
+    async def _delegate_to_callbacks(self, message: QueuedMessage, callback_ids: Iterator[UUID]):
         for id in callback_ids:
             cb = self.callbacks_by_id.get(id)
             if cb is not None:
                 try:
-                    if cb.predicate is None or await cb.predicate(contents):
+                    if cb.predicate is None or await cb.predicate(message):
                         logger.debug(f"Delegating to callback: {id}")
                         enter = monotonic()
-                        await cb.method(contents)
+                        await cb.method(message.contents)
                         diff = monotonic() - enter
                         metrics.CALLBACK_DURATION.observe(diff)
                     else:
@@ -316,9 +314,15 @@ class PubSubSession:
         return await self.parent.unsubscribe_from_topic(topic_name, self.id)
 
     def register_callback(self, fn: Callable, on_predicate: Callable = None):
+        on_predicate = ensure_async(on_predicate) if on_predicate else ensure_async(lambda _: True)
+
+        async def combined_predicates(message: QueuedMessage):
+            topic_matches = message.topic is None or message.topic in self.subscribed_topics
+            return topic_matches and await on_predicate(message)
+
         unregister_callback_id = str(uuid4())
         unregister_callback = self.parent.register_callback(
-            fn, on_predicate=on_predicate, _session_id=self.id
+            fn, on_predicate=combined_predicates, _session_id=self.id
         )
         """Register a subscriber callback with the publisher."""
         self._unregister_callbacks_by_id[unregister_callback_id] = unregister_callback

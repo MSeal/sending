@@ -1,7 +1,7 @@
 """Utilities for common tasks"""
 import inspect
 from itertools import islice
-from typing import Callable, Coroutine, Iterator, List
+from typing import Awaitable, Callable, Iterator, List
 
 
 def split_collection(c, slices) -> List[Iterator]:
@@ -9,7 +9,7 @@ def split_collection(c, slices) -> List[Iterator]:
     return [islice(c, n, None, slices) for n in range(slices)]
 
 
-def ensure_async(fn: Callable) -> Coroutine:
+def ensure_async(fn: Callable) -> Callable[..., Awaitable]:
     """A decorator that can be used to require async behavior."""
     if inspect.iscoroutinefunction(fn):
         return fn

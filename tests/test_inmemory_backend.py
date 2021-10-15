@@ -3,7 +3,7 @@ from functools import partial
 import pytest
 
 from sending.backends.memory import InMemoryPubSubManager
-from sending.base import __all_sessions__
+from sending.base import __all_sessions__, QueuedMessage
 
 
 @pytest.fixture()
@@ -27,8 +27,11 @@ class TestInMemoryPubSubManager:
     async def test_register_callbacks(self, manager: InMemoryPubSubManager):
         cache = []
         cb = partial(callback, cache)
+        await manager.subscribe_to_topic("test")
         unsub = manager.register_callback(cb)
-        await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys())
+        await manager._delegate_to_callbacks(
+            QueuedMessage("test", "test cb", None), manager.callbacks_by_id.keys()
+        )
         unsub()
         assert len(cache) == 1
         assert cache[-1] == "test cb"
@@ -36,8 +39,11 @@ class TestInMemoryPubSubManager:
     async def test_register_callbacks_async(self, manager: InMemoryPubSubManager):
         cache = []
         cb = partial(async_callback, cache)
+        await manager.subscribe_to_topic("test")
         unsub = manager.register_callback(cb)
-        await manager._delegate_to_callbacks("test async_cb", manager.callbacks_by_id.keys())
+        await manager._delegate_to_callbacks(
+            QueuedMessage("test", "test async_cb", None), manager.callbacks_by_id.keys()
+        )
         unsub()
         assert len(cache) == 1
         assert cache[-1] == "test async_cb"
@@ -91,8 +97,11 @@ class TestInMemoryPubSubManager:
         async with manager.get_session() as session:
             cache = []
             cb = partial(callback, cache)
+            await session.subscribe_to_topic("test")
             unsub = session.register_callback(cb)
-            await manager._delegate_to_callbacks("test cb", manager.callbacks_by_id.keys())
+            await manager._delegate_to_callbacks(
+                QueuedMessage("test", "test cb", None), manager.callbacks_by_id.keys()
+            )
             unsub()
             assert len(cache) == 1
             assert cache[-1] == "test cb"
@@ -188,7 +197,9 @@ class TestInMemoryPubSubManager:
 
 @pytest.mark.asyncio
 class TestPubSubSession:
-    async def test_when_parent_is_subscribed_to_multiple_topics_the_session_only_receives_messages_its_subscribed_to(self, manager):
+    async def test_when_parent_is_subscribed_to_multiple_topics_the_session_only_receives_messages_its_subscribed_to(
+        self, manager
+    ):
         cache1 = []
         cb1 = partial(async_callback, cache1)
         cache2 = []
