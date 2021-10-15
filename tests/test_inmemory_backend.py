@@ -157,8 +157,8 @@ class TestInMemoryPubSubManager:
         assert cache[0] == "hooked message!"
 
     async def test_predicated_callback(self, manager: InMemoryPubSubManager):
-        async def predicate(content):
-            return content == "message"
+        async def predicate(message):
+            return message.contents == "message"
 
         cache = []
         cb = partial(callback, cache)
@@ -184,3 +184,27 @@ class TestInMemoryPubSubManager:
             await manager._drain_queues()
             assert len(cache) == 1
             assert cache[0] == "message"
+
+
+@pytest.mark.asyncio
+class TestPubSubSession:
+    async def test_when_parent_is_subscribed_to_multiple_topics_the_session_only_receives_messages_its_subscribed_to(self, manager):
+        cache1 = []
+        cb1 = partial(async_callback, cache1)
+        cache2 = []
+        cb2 = partial(async_callback, cache2)
+
+        session1 = manager.get_session()
+        session2 = manager.get_session()
+
+        session1.register_callback(cb1)
+        session2.register_callback(cb2)
+        await session1.subscribe_to_topic("files/1")
+        await session2.subscribe_to_topic("files/2")
+
+        manager.send("files/1", "hello")
+        manager.send("files/2", "foo")
+        await manager._drain_queues()
+
+        assert cache1 == ["hello"]
+        assert cache2 == ["foo"]
