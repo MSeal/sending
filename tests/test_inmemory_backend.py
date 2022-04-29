@@ -3,7 +3,7 @@ from functools import partial
 import pytest
 
 from sending.backends.memory import InMemoryPubSubManager
-from sending.base import __not_in_a_session__, QueuedMessage
+from sending.base import QueuedMessage, __not_in_a_session__
 
 
 @pytest.fixture()
@@ -198,9 +198,7 @@ class TestInMemoryPubSubManager:
 @pytest.mark.asyncio
 class TestPubSubSession:
     @pytest.mark.parametrize("use_isolated_session", [True, False])
-    async def test_when_parent_is_subscribed_to_multiple_topics_the_session_only_receives_messages_its_subscribed_to(
-        self, manager, use_isolated_session
-    ):
+    async def test_message_inheritance(self, manager, use_isolated_session):
         cache1 = []
         cb1 = partial(async_callback, cache1)
         cache2 = []
