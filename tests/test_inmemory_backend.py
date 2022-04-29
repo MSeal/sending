@@ -22,7 +22,6 @@ async def async_callback(iterable, message):
     iterable.append(message)
 
 
-@pytest.mark.asyncio
 class TestInMemoryPubSubManager:
     async def test_register_callbacks(self, manager: InMemoryPubSubManager):
         cache = []
@@ -195,7 +194,6 @@ class TestInMemoryPubSubManager:
             assert cache[0] == "message"
 
 
-@pytest.mark.asyncio
 class TestPubSubSession:
     @pytest.mark.parametrize("use_isolated_session", [True, False])
     async def test_message_inheritance(self, manager, use_isolated_session):

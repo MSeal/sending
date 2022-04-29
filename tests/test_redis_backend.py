@@ -15,7 +15,6 @@ class TestRedisBackend:
     Expects that a local Redis instance is being run.
     """
 
-    @pytest.mark.asyncio
     async def test_redis_backend(self, mocker):
         cb = mocker.MagicMock()
         mgr = RedisPubSubManager(REDIS_DSN)
