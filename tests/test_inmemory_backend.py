@@ -105,6 +105,33 @@ class TestInMemoryPubSubManager:
             assert len(cache) == 1
             assert cache[-1] == "test cb"
 
+    async def test_session_inherit_global_subscription(self, manager: InMemoryPubSubManager):
+        await manager.subscribe_to_topic("test")
+        async with manager.get_session() as session:
+            cache = []
+            cb = partial(callback, cache)
+            unsub = session.register_callback(cb)
+            await manager._delegate_to_callbacks(
+                QueuedMessage("test", "test cb", None), manager.callbacks_by_id.keys()
+            )
+            unsub()
+            assert len(cache) == 1
+            assert cache[-1] == "test cb"
+
+    async def test_detached_session_does_not_inherit_global_subscription(
+        self, manager: InMemoryPubSubManager
+    ):
+        await manager.subscribe_to_topic("test")
+        async with manager.get_detached_session() as session:
+            cache = []
+            cb = partial(callback, cache)
+            unsub = session.register_callback(cb)
+            await manager._delegate_to_callbacks(
+                QueuedMessage("test", "test cb", None), manager.callbacks_by_id.keys()
+            )
+            unsub()
+            assert len(cache) == 0
+
     async def test_session_async_exit(self, manager: InMemoryPubSubManager):
         async with manager.get_session() as session:
             cb = partial(callback, [])
@@ -192,36 +219,3 @@ class TestInMemoryPubSubManager:
             await manager._drain_queues()
             assert len(cache) == 1
             assert cache[0] == "message"
-
-
-class TestPubSubSession:
-    @pytest.mark.parametrize("use_isolated_session", [True, False])
-    async def test_message_inheritance(self, manager, use_isolated_session):
-        cache1 = []
-        cb1 = partial(async_callback, cache1)
-        cache2 = []
-        cb2 = partial(async_callback, cache2)
-
-        session1 = manager.get_session(use_isolated_session)
-        session2 = manager.get_session(use_isolated_session)
-
-        session1.register_callback(cb1)
-        session2.register_callback(cb2)
-        await session1.subscribe_to_topic("files/1")
-        await session2.subscribe_to_topic("files/2")
-        await manager.subscribe_to_topic("global_notifications")
-
-        manager.send("files/1", "hello")
-        manager.send("files/2", "foo")
-        manager.send("global_notifications", "hello world")
-        await manager._drain_queues()
-
-        expected_cache1 = ["hello"]
-        expected_cache2 = ["foo"]
-
-        if not use_isolated_session:
-            expected_cache1.append("hello world")
-            expected_cache2.append("hello world")
-
-        assert cache1 == expected_cache1
-        assert cache2 == expected_cache2

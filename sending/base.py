@@ -4,7 +4,6 @@ import abc
 import asyncio
 from collections import defaultdict, namedtuple
 from functools import partial
-from time import monotonic
 from typing import Callable, Coroutine, Dict, Iterator, List, Set
 from uuid import UUID, uuid4
 
@@ -232,9 +231,7 @@ class AbstractPubSubManager(abc.ABC):
                 try:
                     if cb.predicate is None or await cb.predicate(message):
                         logger.debug(f"Delegating to callback: {id}")
-                        enter = monotonic()
                         await cb.method(message.contents)
-                        diff = monotonic() - enter
                     else:
                         logger.debug(f"Skipping callback {id} because predicate returned False")
                 except Exception:
@@ -258,12 +255,27 @@ class AbstractPubSubManager(abc.ABC):
         message = QueuedMessage(topic, contents, _session_id)
         self.inbound_queue.put_nowait(message)
 
-    def get_session(self, use_isolated_session: bool = False):
-        """Get the pub-sub manager's current session."""
-        return PubSubSession(self) if use_isolated_session else PubSubSessionWithParent(self)
+    def get_detached_session(self):
+        """Get a new session for callbacks and subscriptions that won't receive
+        global messages from this parent.
+        """
+        return DetachedPubSubSession(self)
+
+    def get_session(self):
+        """Get a new session for callbacks and subscriptions."""
+        return PubSubSession(self)
 
 
-class PubSubSession:
+class DetachedPubSubSession:
+    """A session that does not receive messages for topics other than what it has explicitly
+    subscribed to.
+
+    It still relies on the parent as the centralized queuing mechanism for processing inbound
+    and outbound messages, but it ensures total isolation for what messages get passed down to
+    the session's callbacks. This is helpful if you don't want to have a separate polling process
+    for each session.
+    """
+
     def __init__(self, parent: AbstractPubSubManager) -> None:
         self.id: str = str(uuid4())
         self.parent: AbstractPubSubManager = parent
@@ -335,7 +347,14 @@ class PubSubSession:
         await self.stop()
 
 
-class PubSubSessionWithParent(PubSubSession):
+class PubSubSession(DetachedPubSubSession):
+    """A holder for callbacks and topic subscriptions. Also receives messages from topics
+    subscribed to by the parent manager.
+
+    This is helpful if you have a global topic that all sessions should subscribe to
+    automatically without client input.
+    """
+
     @property
     def subscribed_topics(self) -> Set[str]:
         all_session_topics = self.parent.subscribed_topics_by_session[__not_in_a_session__]
