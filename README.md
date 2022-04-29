@@ -16,7 +16,38 @@ It has three primary goals:
   3. Make it possible for applications to validate data coming in and out of their pub/sub implementations.
 
 ## Installation
-TODO
 
-## Example Usage
-TODO
+```bash
+pip install sending
+```
+
+## Developing
+
+First run:
+
+```bash
+pip install nox
+```
+
+### Running Tests
+
+```
+nox -s test
+```
+
+To run tests against a specific backend you'll need to ensure that a local copy of that backend is running.
+
+For redis, install the Redis server and then run `redis-server`. Afterwards you can run `nox -s test_redis` which will
+run automated tests against your local instance of Redis. This assumes you are running using the default port of 6379.
+
+### Linting
+
+```
+nox -s lint
+```
+
+### Style Enforcement
+
+```
+nox -s lint_check
+```
