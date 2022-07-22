@@ -1,7 +1,7 @@
 import asyncio
-from jupyter_client import manager
 
 import pytest
+from jupyter_client import manager
 
 from sending.backends.jupyter import JupyterKernelManager
 

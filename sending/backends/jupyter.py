@@ -1,5 +1,6 @@
-from typing import Optional, Union
 from queue import Empty
+from typing import Optional, Union
+
 from jupyter_client import AsyncKernelClient
 from zmq import SocketOption
 
