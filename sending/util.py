@@ -1,12 +1,6 @@
 """Utilities for common tasks"""
 import inspect
-from itertools import islice
-from typing import Awaitable, Callable, Iterator, List
-
-
-def split_collection(c, slices) -> List[Iterator]:
-    """Splits collection into a number of slices, as equally-sized as possible."""
-    return [islice(c, n, None, slices) for n in range(slices)]
+from typing import Awaitable, Callable
 
 
 def ensure_async(fn: Callable) -> Callable[..., Awaitable]:

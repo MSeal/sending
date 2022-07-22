@@ -4,11 +4,11 @@ import abc
 import asyncio
 from collections import defaultdict, namedtuple
 from functools import partial
-from typing import Callable, Coroutine, Dict, Iterator, List, Set
+from typing import Callable, Coroutine, Dict, List, Set
 from uuid import UUID, uuid4
 
 from .logging import logger
-from .util import ensure_async, split_collection
+from .util import ensure_async
 
 QueuedMessage = namedtuple("QueuedMessage", ["topic", "contents", "session_id"])
 Callback = namedtuple("Callback", ["method", "predicate"])
@@ -34,8 +34,6 @@ class AbstractPubSubManager(abc.ABC):
         self.inbound_queue: asyncio.Queue[QueuedMessage] = None
         self.inbound_workers: List[asyncio.Task] = []
 
-        self.callback_delegation_workers = 1
-
         self.poll_workers: List[asyncio.Task] = []
         self.subscribed_topics_by_session: Dict[str, Set] = defaultdict(set)
 
@@ -52,14 +50,10 @@ class AbstractPubSubManager(abc.ABC):
         inbound_workers=1,
         outbound_workers=1,
         poll_workers=1,
-        callback_delegation_workers=None,
     ):
         """Initialize a pub-sub channel, specifically its queues and workers."""
         self.outbound_queue = asyncio.Queue(queue_size)
         self.inbound_queue = asyncio.Queue(queue_size)
-        self.callback_delegation_workers = (
-            callback_delegation_workers or self.callback_delegation_workers
-        )
 
         for i in range(outbound_workers):
             self.outbound_workers.append(asyncio.create_task(self._outbound_worker()))
@@ -212,30 +206,26 @@ class AbstractPubSubManager(abc.ABC):
                     callback_ids = self.callback_ids_by_session[message.session_id]
 
                 await asyncio.gather(
-                    *[
-                        self._delegate_to_callbacks(message, slice)
-                        for slice in split_collection(
-                            callback_ids, self.callback_delegation_workers
-                        )
-                    ]
+                    *[self._delegate_to_callback(message, cb_id) for cb_id in callback_ids]
                 )
             except Exception:
                 logger.exception("Uncaught exception found while processing inbound message")
             finally:
                 self.inbound_queue.task_done()
 
-    async def _delegate_to_callbacks(self, message: QueuedMessage, callback_ids: Iterator[UUID]):
-        for id in callback_ids:
-            cb = self.callbacks_by_id.get(id)
-            if cb is not None:
-                try:
-                    if cb.predicate is None or await cb.predicate(message):
-                        logger.debug(f"Delegating to callback: {id}")
-                        await cb.method(message.contents)
-                    else:
-                        logger.debug(f"Skipping callback {id} because predicate returned False")
-                except Exception:
-                    logger.exception("Uncaught exception encountered while delegating to callback")
+    async def _delegate_to_callback(self, message: QueuedMessage, callback_id: UUID):
+        cb = self.callbacks_by_id.get(callback_id)
+        if cb is not None:
+            try:
+                if cb.predicate is None or await cb.predicate(message):
+                    logger.debug(f"Delegating to callback: {callback_id}")
+                    await cb.method(message.contents)
+                else:
+                    logger.debug(
+                        f"Skipping callback {callback_id} because predicate returned False"
+                    )
+            except Exception:
+                logger.exception("Uncaught exception encountered while delegating to callback")
 
     async def _poll_loop(self):
         while True:

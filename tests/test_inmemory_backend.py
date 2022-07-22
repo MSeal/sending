@@ -28,9 +28,8 @@ class TestInMemoryPubSubManager:
         cb = partial(callback, cache)
         await manager.subscribe_to_topic("test")
         unsub = manager.register_callback(cb)
-        await manager._delegate_to_callbacks(
-            QueuedMessage("test", "test cb", None), manager.callbacks_by_id.keys()
-        )
+        for id, cb in manager.callbacks_by_id.items():
+            await manager._delegate_to_callback(QueuedMessage("test", "test cb", None), id)
         unsub()
         assert len(cache) == 1
         assert cache[-1] == "test cb"
@@ -40,9 +39,8 @@ class TestInMemoryPubSubManager:
         cb = partial(async_callback, cache)
         await manager.subscribe_to_topic("test")
         unsub = manager.register_callback(cb)
-        await manager._delegate_to_callbacks(
-            QueuedMessage("test", "test async_cb", None), manager.callbacks_by_id.keys()
-        )
+        for id, cb in manager.callbacks_by_id.items():
+            await manager._delegate_to_callback(QueuedMessage("test", "test async_cb", None), id)
         unsub()
         assert len(cache) == 1
         assert cache[-1] == "test async_cb"
@@ -98,9 +96,8 @@ class TestInMemoryPubSubManager:
             cb = partial(callback, cache)
             await session.subscribe_to_topic("test")
             unsub = session.register_callback(cb)
-            await manager._delegate_to_callbacks(
-                QueuedMessage("test", "test cb", None), manager.callbacks_by_id.keys()
-            )
+            for id, cb in manager.callbacks_by_id.items():
+                await manager._delegate_to_callback(QueuedMessage("test", "test cb", None), id)
             unsub()
             assert len(cache) == 1
             assert cache[-1] == "test cb"
@@ -111,9 +108,8 @@ class TestInMemoryPubSubManager:
             cache = []
             cb = partial(callback, cache)
             unsub = session.register_callback(cb)
-            await manager._delegate_to_callbacks(
-                QueuedMessage("test", "test cb", None), manager.callbacks_by_id.keys()
-            )
+            for id, cb in manager.callbacks_by_id.items():
+                await manager._delegate_to_callback(QueuedMessage("test", "test cb", None), id)
             unsub()
             assert len(cache) == 1
             assert cache[-1] == "test cb"
@@ -126,9 +122,8 @@ class TestInMemoryPubSubManager:
             cache = []
             cb = partial(callback, cache)
             unsub = session.register_callback(cb)
-            await manager._delegate_to_callbacks(
-                QueuedMessage("test", "test cb", None), manager.callbacks_by_id.keys()
-            )
+            for id, cb in manager.callbacks_by_id.items():
+                await manager._delegate_to_callback(QueuedMessage("test", "test cb", None), id)
             unsub()
             assert len(cache) == 0
 
