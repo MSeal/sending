@@ -176,6 +176,7 @@ class AbstractPubSubManager(abc.ABC):
                 if self.outbound_message_hook is not None:
                     coro = ensure_async(self.outbound_message_hook)
                     message = message._replace(contents=await coro(message.contents))
+                logger.debug(f"Sending message to topic: {message.topic}")
                 await self._publish(message)
             except Exception:
                 logger.exception("Uncaught exception found while publishing message")

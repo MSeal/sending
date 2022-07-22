@@ -3,7 +3,7 @@ import nox
 
 def bootstrap_poetry(session):
     session.install("poetry")
-    session.run("poetry", "install", "-E", "redis")
+    session.run("poetry", "install", "-E", "redis", "-E", "jupyter")
 
 
 def run(session, *args, **kwargs):
@@ -49,4 +49,17 @@ def test_redis(session):
         "-m",
         "redis",
         env={"SENDING__ENABLE_LOGGING": "True", "REDIS_DSN": "redis://localhost:6379"},
+    )
+
+
+@nox.session(python = ["3.8", "3.9"])
+def test_jupyter(session):
+    # Requires you install and run redis-server first
+    bootstrap_poetry(session)
+    run(
+        session,
+        "pytest",
+        "-m",
+        "jupyter",
+        env={"SENDING__ENABLE_LOGGING": "True"},
     )
