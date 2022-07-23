@@ -187,8 +187,8 @@ class TestInMemoryPubSubManager:
         assert cache[0] == "hooked message!"
 
     async def test_predicated_callback(self, manager: InMemoryPubSubManager):
-        async def predicate(message):
-            return message.contents == "message"
+        async def predicate(topic, contents):
+            return contents == "message"
 
         cache = []
         cb = partial(callback, cache)
@@ -204,6 +204,64 @@ class TestInMemoryPubSubManager:
         await manager._drain_queues()
         assert len(cache) == 1
         assert cache[0] == "message"
+
+    async def test_callback_on_topic(self, manager: InMemoryPubSubManager):
+        cache = []
+        cb = partial(callback, cache)
+        manager.register_callback(cb, on_topic="topic")
+
+        await manager.subscribe_to_topic("other_topic")
+        manager.send("other_topic", "other message")
+        await manager._drain_queues()
+        assert len(cache) == 0
+
+        await manager.subscribe_to_topic("topic")
+        manager.send("topic", "message")
+        await manager._drain_queues()
+        assert len(cache) == 1
+        assert cache[0] == "message"
+
+    async def test_callback_decorator(self, manager: InMemoryPubSubManager):
+        cache = []
+
+        @manager.callback()
+        def callback(contents):
+            cache.append(contents)
+
+        for id, cb in manager.callbacks_by_id.items():
+            await manager._delegate_to_callback(QueuedMessage("test", "test cb", None), id)
+        assert len(cache) == 1
+        assert cache[-1] == "test cb"
+
+    async def test_callback_decorator_topic(self, manager: InMemoryPubSubManager):
+        cache = []
+
+        @manager.callback(on_topic="topic")
+        def callback(contents):
+            cache.append(contents)
+
+        for id, cb in manager.callbacks_by_id.items():
+            await manager._delegate_to_callback(QueuedMessage("test", "test cb", None), id)
+        assert len(cache) == 0
+
+        for id, cb in manager.callbacks_by_id.items():
+            await manager._delegate_to_callback(QueuedMessage("topic", "test cb", None), id)
+        assert len(cache) == 1
+
+    async def test_callback_decorator_predicate(self, manager: InMemoryPubSubManager):
+        cache = []
+
+        def predicate(topic, message):
+            return message == "one"
+
+        @manager.callback(on_predicate=predicate)
+        def callback(contents):
+            cache.append(contents)
+
+        for id, cb in manager.callbacks_by_id.items():
+            await manager._delegate_to_callback(QueuedMessage("test", "one", None), id)
+            await manager._delegate_to_callback(QueuedMessage("test", "two", None), id)
+        assert len(cache) == 1
 
     async def test_sending_to_session_callbacks(self, manager: InMemoryPubSubManager):
         async with manager.get_session() as session:

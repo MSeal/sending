@@ -14,13 +14,10 @@ def ipykernel():
 @pytest.mark.jupyter
 class TestJupyterBackend:
     async def test_jupyter_backend(self, mocker, ipykernel):
-        async def predicate(message):
-            return message.topic == "iopub"
-
         cb = mocker.MagicMock()
         mgr = JupyterKernelManager(ipykernel[1].get_connection_info())
         await mgr.initialize()
-        mgr.register_callback(cb, predicate)
+        mgr.register_callback(cb, on_topic="iopub")
 
         await mgr.subscribe_to_topic("iopub")
         mgr.send("shell", "execute_request", {"code": "print('asdf')", "silent": False})

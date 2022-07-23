@@ -3,7 +3,7 @@
 import abc
 import asyncio
 from collections import defaultdict, namedtuple
-from functools import partial
+from functools import partial, wraps
 from typing import Callable, Coroutine, Dict, List, Set
 from uuid import UUID, uuid4
 
@@ -145,20 +145,38 @@ class AbstractPubSubManager(abc.ABC):
         pass
 
     def register_callback(
-        self, fn: Callable, on_predicate: Callable = None, _session_id=None
+        self, fn: Callable, *, on_topic: str = None, on_predicate: Callable = None, _session_id=None
     ) -> Callable:
         """Register a subscriber callback with the publisher."""
+
+        async def predicate(topic, message):
+            if on_topic and on_topic != topic:
+                return False
+            if on_predicate and not await ensure_async(on_predicate)(topic, message):
+                return False
+            return True
+
         fn = ensure_async(fn)
-        if on_predicate is not None:
-            on_predicate = ensure_async(on_predicate)
         cb_id = str(uuid4())
         logger.debug(f"Registering callback: '{cb_id}'")
-        self.callbacks_by_id[cb_id] = Callback(fn, on_predicate)
+        self.callbacks_by_id[cb_id] = Callback(fn, predicate)
 
         if _session_id is not None:
             self.callback_ids_by_session[_session_id].add(cb_id)
 
         return partial(self._detach_callback, cb_id, _session_id)
+
+    def callback(self, on_topic=None, on_predicate=None) -> Callable:
+        def decorator(fn):
+            self.register_callback(fn, on_topic=on_topic, on_predicate=on_predicate)
+
+            @wraps(fn)
+            def wrapped_fn(*args, **kwargs):
+                return fn(*args, **kwargs)
+
+            return wrapped_fn
+
+        return decorator
 
     def _detach_callback(self, cb_id: UUID, _session_id: UUID):
         callback = self.callbacks_by_id.get(cb_id)
@@ -218,8 +236,11 @@ class AbstractPubSubManager(abc.ABC):
         cb = self.callbacks_by_id.get(callback_id)
         if cb is not None:
             try:
-                if cb.predicate is None or await cb.predicate(message):
+                if cb.predicate is None or await cb.predicate(message.topic, message.contents):
                     logger.debug(f"Delegating to callback: {callback_id}")
+                    # TODO(nick): I would love to have a set of kwargs that are passed around
+                    # for callbacks + predicates that you opt-in to. That would be a bit easier
+                    # to document and access.
                     await cb.method(message.contents)
                 else:
                     logger.debug(
@@ -295,16 +316,19 @@ class DetachedPubSubSession:
         """Unsubscribe from the message feed for a topic."""
         return await self.parent.unsubscribe_from_topic(topic_name, self.id)
 
-    def register_callback(self, fn: Callable, on_predicate: Callable = None):
-        on_predicate = ensure_async(on_predicate) if on_predicate else ensure_async(lambda _: True)
-
-        async def combined_predicates(message: QueuedMessage):
-            topic_matches = message.topic is None or self.is_subscribed_to_topic(message.topic)
-            return topic_matches and await on_predicate(message)
+    def register_callback(
+        self, fn: Callable, *, on_topic: str = None, on_predicate: Callable = None
+    ):
+        async def combined_predicates(topic, contents):
+            if topic and not self.is_subscribed_to_topic(topic):
+                return False
+            if on_predicate and not await ensure_async(on_predicate)(topic, contents):
+                return False
+            return True
 
         unregister_callback_id = str(uuid4())
         unregister_callback = self.parent.register_callback(
-            fn, on_predicate=combined_predicates, _session_id=self.id
+            fn, on_topic=on_topic, on_predicate=combined_predicates, _session_id=self.id
         )
         """Register a subscriber callback with the publisher."""
         self._unregister_callbacks_by_id[unregister_callback_id] = unregister_callback
