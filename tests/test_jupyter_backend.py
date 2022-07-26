@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 import pytest
 from jupyter_client import manager
@@ -8,14 +9,17 @@ from sending.backends.jupyter import JupyterKernelManager
 
 @pytest.fixture(scope="session")
 def ipykernel():
-    yield manager.start_new_kernel()
+    km, kc = manager.start_new_kernel()
+    yield kc.get_connection_info()
+    kc.stop_channels()
+    km.shutdown_kernel()
 
 
 @pytest.mark.jupyter
 class TestJupyterBackend:
     async def test_jupyter_backend(self, mocker, ipykernel):
         cb = mocker.MagicMock()
-        mgr = JupyterKernelManager(ipykernel[1].get_connection_info())
+        mgr = JupyterKernelManager(ipykernel)
         await mgr.initialize()
         mgr.register_callback(cb, on_topic="iopub")
 
@@ -40,3 +44,29 @@ class TestJupyterBackend:
         await asyncio.sleep(1)
         await mgr.shutdown()
         cb.assert_not_called()
+
+    async def test_reconnection(self, mocker, ipykernel):
+        cb = mocker.MagicMock()
+        mgr = JupyterKernelManager(ipykernel, max_message_size=1024)
+        await mgr.initialize()
+        mgr.register_callback(cb, on_topic="iopub")
+        await mgr.subscribe_to_topic("iopub")
+
+        mgr.send("shell", "execute_request", {"code": "print('asdf')", "silent": False})
+        await asyncio.sleep(1)
+        await mgr._drain_queues()
+        cb.assert_called()
+
+        cb.reset_mock()
+        mgr.send(
+            "shell", "execute_request", {"code": f"print('{os.urandom(2048)}')", "silent": False}
+        )
+        await asyncio.sleep(1)
+        await mgr._drain_queues()
+        cb.assert_called()
+
+        cb.reset_mock()
+        mgr.send("shell", "execute_request", {"code": "print('asdf')", "silent": False})
+        await asyncio.sleep(1)
+        await mgr.shutdown()
+        cb.assert_called()
