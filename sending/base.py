@@ -2,6 +2,7 @@
    implementing custom managers or other features."""
 import abc
 import asyncio
+import enum
 from collections import defaultdict, namedtuple
 from functools import partial, wraps
 from typing import Callable, Coroutine, Dict, List, Set
@@ -14,6 +15,16 @@ QueuedMessage = namedtuple("QueuedMessage", ["topic", "contents", "session_id"])
 Callback = namedtuple("Callback", ["method", "predicate"])
 
 __not_in_a_session__ = object()
+
+# Reserved name for system events sent by the library
+SYSTEM_TOPIC = "__sending__"
+
+
+class SystemEvents(enum.Enum):
+    # Umbrella event for disconnects caused by circumstances out of the user's control.
+    # Could be a network error, or something like ZMQ's MAXMSGSIZE flag forcibly disconnecting
+    # the peer.
+    FORCED_DISCONNECT = enum.auto()
 
 
 class AbstractPubSubManager(abc.ABC):
@@ -145,14 +156,25 @@ class AbstractPubSubManager(abc.ABC):
         pass
 
     def register_callback(
-        self, fn: Callable, *, on_topic: str = None, on_predicate: Callable = None, _session_id=None
+        self,
+        fn: Callable,
+        *,
+        on_topic: str = None,
+        on_predicate: Callable = None,
+        on_system_event: SystemEvents = None,
+        _session_id=None,
     ) -> Callable:
         """Register a subscriber callback with the publisher."""
 
-        async def predicate(topic, message):
+        if on_system_event and not on_topic:
+            on_topic = SYSTEM_TOPIC
+
+        async def predicate(topic, message, system_event=None):
             if on_topic and on_topic != topic:
                 return False
             if on_predicate and not await ensure_async(on_predicate)(topic, message):
+                return False
+            if on_system_event and on_system_event != system_event:
                 return False
             return True
 
@@ -215,7 +237,7 @@ class AbstractPubSubManager(abc.ABC):
             message = await self.inbound_queue.get()
 
             try:
-                if self.inbound_message_hook is not None:
+                if self.inbound_message_hook is not None and message.topic is not SYSTEM_TOPIC:
                     coro = ensure_async(self.inbound_message_hook)
                     message = message._replace(contents=await coro(message.contents))
 
@@ -236,7 +258,12 @@ class AbstractPubSubManager(abc.ABC):
         cb = self.callbacks_by_id.get(callback_id)
         if cb is not None:
             try:
-                if cb.predicate is None or await cb.predicate(message.topic, message.contents):
+                system_event = None
+                if message.topic == SYSTEM_TOPIC:
+                    system_event = message.contents.get("event")
+                if cb.predicate is None or await cb.predicate(
+                    message.topic, message.contents, system_event=system_event
+                ):
                     logger.debug(f"Delegating to callback: {callback_id}")
                     # TODO(nick): I would love to have a set of kwargs that are passed around
                     # for callbacks + predicates that you opt-in to. That would be a bit easier
@@ -277,6 +304,9 @@ class AbstractPubSubManager(abc.ABC):
         """Get a new session for callbacks and subscriptions."""
         return PubSubSession(self)
 
+    def _emit_system_event(self, topic: str, event: SystemEvents):
+        self.schedule_for_delivery(SYSTEM_TOPIC, {"event": event, "topic": topic})
+
 
 class DetachedPubSubSession:
     """A session that does not receive messages for topics other than what it has explicitly
@@ -293,12 +323,9 @@ class DetachedPubSubSession:
         self.parent: AbstractPubSubManager = parent
         self._unregister_callbacks_by_id: Dict[str, Callable] = {}
 
-    def send_to_callbacks(self, contents):
+    def send_to_callbacks(self, contents, topic_name=None):
         """Send contents from a publisher to all subscribed callbacks."""
-
-        # We don't currently use the topic name in the inbound worker
-        # so setting this to None should be okay for now.
-        self.parent.schedule_for_delivery(None, contents, self.id)
+        self.parent.schedule_for_delivery(topic_name, contents, self.id)
 
     @property
     def subscribed_topics(self) -> Set[str]:

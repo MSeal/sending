@@ -5,6 +5,7 @@ import pytest
 from jupyter_client import manager
 
 from sending.backends.jupyter import JupyterKernelManager
+from sending.base import SystemEvents
 
 
 @pytest.fixture(scope="session")
@@ -47,15 +48,18 @@ class TestJupyterBackend:
 
     async def test_reconnection(self, mocker, ipykernel):
         cb = mocker.MagicMock()
+        system_event_cb = mocker.MagicMock()
         mgr = JupyterKernelManager(ipykernel, max_message_size=1024)
         await mgr.initialize()
         mgr.register_callback(cb, on_topic="iopub")
+        mgr.register_callback(system_event_cb, on_system_event=SystemEvents.FORCED_DISCONNECT)
         await mgr.subscribe_to_topic("iopub")
 
         mgr.send("shell", "execute_request", {"code": "print('asdf')", "silent": False})
         await asyncio.sleep(1)
         await mgr._drain_queues()
         cb.assert_called()
+        system_event_cb.assert_not_called()
 
         cb.reset_mock()
         mgr.send(
@@ -64,9 +68,12 @@ class TestJupyterBackend:
         await asyncio.sleep(1)
         await mgr._drain_queues()
         cb.assert_called()
+        system_event_cb.assert_called()
 
         cb.reset_mock()
+        system_event_cb.reset_mock()
         mgr.send("shell", "execute_request", {"code": "print('asdf')", "silent": False})
         await asyncio.sleep(1)
         await mgr.shutdown()
         cb.assert_called()
+        system_event_cb.assert_not_called()

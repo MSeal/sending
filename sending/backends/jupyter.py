@@ -5,7 +5,7 @@ from jupyter_client import AsyncKernelClient
 from zmq import NOBLOCK, Event, Socket, SocketOption
 from zmq.utils.monitor import recv_monitor_message
 
-from ..base import AbstractPubSubManager, QueuedMessage
+from ..base import AbstractPubSubManager, QueuedMessage, SystemEvents
 from ..logging import logger
 
 
@@ -21,8 +21,6 @@ class JupyterKernelManager(AbstractPubSubManager):
     ):
         self._client = AsyncKernelClient()
         self._client.load_connection_info(self.connection_info)
-        # TODO(nick): automatically subscribe to monitor socket and figure out when we're
-        # disconnected so we can unsub/resub
         if self.max_message_size:
             self.set_context_option(SocketOption.MAXMSGSIZE, self.max_message_size)
 
@@ -52,6 +50,7 @@ class JupyterKernelManager(AbstractPubSubManager):
     async def _cleanup_topic_subscription(self, topic_name: str):
         if hasattr(self._client, f"{topic_name}_channel"):
             channel_obj = getattr(self._client, f"{topic_name}_channel")
+            channel_obj.socket.disable_monitor()
             channel_obj.close()
 
             # Reset the underlying channel object so jupyter_client will recreate it
@@ -111,4 +110,5 @@ class JupyterKernelManager(AbstractPubSubManager):
             # This is helpful in situations where ZMQ disconnects peers
             # when it violates some constraint such as the max message size.
             logger.info(f"ZMQ disconnected for topic '{topic}', cycling socket")
+            self._emit_system_event(topic, SystemEvents.FORCED_DISCONNECT)
             self._cycle_socket(topic)
