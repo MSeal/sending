@@ -166,10 +166,13 @@ class AbstractPubSubManager(abc.ABC):
     ) -> Callable:
         """Register a subscriber callback with the publisher."""
 
-        if on_system_event and not on_topic:
+        if on_system_event:
             on_topic = SYSTEM_TOPIC
 
         async def predicate(topic, message, system_event=None):
+            if topic == SYSTEM_TOPIC and on_topic != SYSTEM_TOPIC:
+                # You have to explicitly opt-in to receiving system events
+                return False
             if on_topic and on_topic != topic:
                 return False
             if on_predicate and not await ensure_async(on_predicate)(topic, message):

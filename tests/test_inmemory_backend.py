@@ -3,7 +3,7 @@ from functools import partial
 import pytest
 
 from sending.backends.memory import InMemoryPubSubManager
-from sending.base import QueuedMessage, __not_in_a_session__
+from sending.base import QueuedMessage, SystemEvents, __not_in_a_session__
 
 
 @pytest.fixture()
@@ -272,3 +272,17 @@ class TestInMemoryPubSubManager:
             await manager._drain_queues()
             assert len(cache) == 1
             assert cache[0] == "message"
+
+    async def test_system_events(self, manager: InMemoryPubSubManager, mocker):
+        def dummy(*args):
+            return True
+
+        topic_cb = mocker.MagicMock()
+        system_event_cb = mocker.MagicMock()
+        manager.register_callback(topic_cb, on_topic="topic")
+        manager.register_callback(topic_cb, on_predicate=dummy)
+        manager.register_callback(system_event_cb, on_system_event=SystemEvents.FORCED_DISCONNECT)
+        manager._emit_system_event("topic", SystemEvents.FORCED_DISCONNECT)
+        await manager._drain_queues()
+        system_event_cb.assert_called()
+        topic_cb.assert_not_called()
