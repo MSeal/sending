@@ -188,9 +188,11 @@ class AbstractPubSubManager(abc.ABC):
 
         return partial(self._detach_callback, cb_id, _session_id)
 
-    def callback(self, on_topic=None, on_predicate=None) -> Callable:
+    def callback(self, on_topic=None, on_predicate=None, on_system_event=None) -> Callable:
         def decorator(fn):
-            self.register_callback(fn, on_topic=on_topic, on_predicate=on_predicate)
+            self.register_callback(
+                fn, on_topic=on_topic, on_predicate=on_predicate, on_system_event=on_system_event
+            )
 
             @wraps(fn)
             def wrapped_fn(*args, **kwargs):

@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2022-07-26
+### Fixed
+- Callback decorator supports system events
+
 ## [0.2.0] - 2022-07-26
 ### Added
 - New backend for Jupyter kernels

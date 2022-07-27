@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "sending"
-version = "0.2.0"
+version = "0.2.1"
 description = "Library for pub/sub usage within an async application"
 authors = ["Nicholas Wold <nick@nicholaswold.com>"]
 
