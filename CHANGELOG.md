@@ -5,6 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- Debug logs now contain the qualified name of callbacks
+
 ### Fixed
 - System events are now opt-in only for callbacks through the `on_system_event` kwarg
 

@@ -12,7 +12,7 @@ from .logging import logger
 from .util import ensure_async
 
 QueuedMessage = namedtuple("QueuedMessage", ["topic", "contents", "session_id"])
-Callback = namedtuple("Callback", ["method", "predicate"])
+Callback = namedtuple("Callback", ["method", "predicate", "qualname"])
 
 __not_in_a_session__ = object()
 
@@ -121,7 +121,10 @@ class AbstractPubSubManager(abc.ABC):
             logger.info(f"Creating subscription to topic '{topic_name}'")
             await self._create_topic_subscription(topic_name)
 
-        logger.debug(f"Adding topic '{topic_name}' to session cache: {_session_id}")
+        if _session_id is __not_in_a_session__:
+            logger.debug(f"Adding topic '{topic_name}' for all sessions")
+        else:
+            logger.debug(f"Adding topic '{topic_name}' to session cache: {_session_id}")
         self.subscribed_topics_by_session[_session_id].add(topic_name)
 
     @abc.abstractmethod
@@ -183,8 +186,16 @@ class AbstractPubSubManager(abc.ABC):
 
         fn = ensure_async(fn)
         cb_id = str(uuid4())
-        logger.debug(f"Registering callback: '{cb_id}'")
-        self.callbacks_by_id[cb_id] = Callback(fn, predicate)
+
+        if hasattr(fn, "__qualname__"):
+            qualname = fn.__qualname__
+        elif hasattr(fn, "__repr__"):
+            qualname = fn.__repr__
+        else:
+            qualname = cb_id
+
+        logger.debug(f"Registering callback: '{qualname}'")
+        self.callbacks_by_id[cb_id] = Callback(fn, predicate, qualname)
 
         if _session_id is not None:
             self.callback_ids_by_session[_session_id].add(cb_id)
@@ -208,7 +219,7 @@ class AbstractPubSubManager(abc.ABC):
     def _detach_callback(self, cb_id: UUID, _session_id: UUID):
         callback = self.callbacks_by_id.get(cb_id)
         if callback is not None:
-            logger.info(f"Detaching callback: '{cb_id}'")
+            logger.info(f"Detaching callback: '{callback.qualname}'")
             del self.callbacks_by_id[cb_id]
 
             if _session_id is not None:
@@ -269,14 +280,14 @@ class AbstractPubSubManager(abc.ABC):
                 if cb.predicate is None or await cb.predicate(
                     message.topic, message.contents, system_event=system_event
                 ):
-                    logger.debug(f"Delegating to callback: {callback_id}")
+                    logger.debug(f"Delegating to callback: '{cb.qualname}'")
                     # TODO(nick): I would love to have a set of kwargs that are passed around
                     # for callbacks + predicates that you opt-in to. That would be a bit easier
                     # to document and access.
                     await cb.method(message.contents)
                 else:
                     logger.debug(
-                        f"Skipping callback {callback_id} because predicate returned False"
+                        f"Skipping callback '{cb.qualname}' because predicate returned False"
                     )
             except Exception:
                 logger.exception("Uncaught exception encountered while delegating to callback")
