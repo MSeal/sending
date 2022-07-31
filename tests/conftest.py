@@ -1,5 +1,7 @@
 import pytest
 
+pytest_plugins = "managed_service_fixtures"
+
 
 def pytest_collection_modifyitems(config, items):
     keywordexpr = config.option.keyword

@@ -2,6 +2,7 @@ import asyncio
 import os
 
 import pytest
+from managed_service_fixtures import RedisDetails
 
 from sending.backends.redis import RedisPubSubManager
 
@@ -15,9 +16,9 @@ class TestRedisBackend:
     Expects that a local Redis instance is being run.
     """
 
-    async def test_redis_backend(self, mocker):
+    async def test_redis_backend(self, mocker, managed_redis: RedisDetails):
         cb = mocker.MagicMock()
-        mgr = RedisPubSubManager(REDIS_DSN)
+        mgr = RedisPubSubManager(dsn=managed_redis.url)
         await mgr.initialize()
         mgr.register_callback(cb)
 
