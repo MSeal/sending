@@ -257,13 +257,14 @@ test = ["ipykernel", "pre-commit", "pytest", "pytest-cov", "pytest-timeout"]
 
 [[package]]
 name = "managed-service-fixtures"
-version = "0.1.1"
+version = "0.1.2"
 description = "Pytest fixtures to manage external services such as Cockroach DB, Vault, or Redis"
 category = "dev"
 optional = false
 python-versions = ">=3.8,<4.0"
 
 [package.dependencies]
+click = ">=8.1.3,<9.0.0"
 filelock = ">=3.7.1,<4.0.0"
 importlib-metadata = ">=4.12.0,<5.0.0"
 mirakuru = ">=2.4.2,<3.0.0"
@@ -271,6 +272,7 @@ pydantic = ">=1.9.0,<2.0.0"
 pytest = ">=7.1.0,<8.0.0"
 pytest-asyncio = ">=0.19.0,<0.20.0"
 pytest-xdist = ">=2.5.0,<3.0.0"
+structlog = ">=22.1.0,<23.0.0"
 
 [[package]]
 name = "mccabe"
@@ -559,6 +561,19 @@ optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
+name = "structlog"
+version = "22.1.0"
+description = "Structured Logging for Python"
+category = "dev"
+optional = false
+python-versions = ">=3.7"
+
+[package.extras]
+dev = ["pre-commit", "rich", "cogapp", "tomli", "coverage", "freezegun (>=0.2.8)", "pretend", "pytest-asyncio (>=0.17)", "pytest (>=6.0)", "simplejson", "furo", "myst-parser", "sphinx", "sphinx-notfound-page", "sphinxcontrib-mermaid", "twisted"]
+docs = ["furo", "myst-parser", "sphinx", "sphinx-notfound-page", "sphinxcontrib-mermaid", "twisted"]
+tests = ["coverage", "freezegun (>=0.2.8)", "pretend", "pytest-asyncio (>=0.17)", "pytest (>=6.0)", "simplejson"]
+
+[[package]]
 name = "tomli"
 version = "2.0.1"
 description = "A lil' TOML parser"
@@ -630,7 +645,7 @@ redis = ["aioredis"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "86931661b715372ae77b5c32009eeebe51d864ec69d5e74c927e30e0bc3ac41d"
+content-hash = "8276084607b13d6d95302eddf52c68c5538f0d6d64f632fa2190d80310a5a140"
 
 [metadata.files]
 aioredis = [
@@ -1055,6 +1070,7 @@ six = [
     {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
     {file = "six-1.16.0.tar.gz", hash = "sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926"},
 ]
+structlog = []
 tomli = [
     {file = "tomli-2.0.1-py3-none-any.whl", hash = "sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc"},
     {file = "tomli-2.0.1.tar.gz", hash = "sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f"},
