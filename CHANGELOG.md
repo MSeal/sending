@@ -5,8 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- `ipykernel` installs as part of the `--extras jupyter`, required to use `jupyter_client.manager.start_new_kernel` in tests
+
 ### Changed
 - Use `managed_service_fixtures` for Redis tests
+
 
 ## [0.2.2] - 2022-07-28
 ### Changed
