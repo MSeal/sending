@@ -1,7 +1,6 @@
 import asyncio
 import os
 
-import pytest
 from managed_service_fixtures import RedisDetails
 
 from sending.backends.redis import RedisPubSubManager
@@ -9,7 +8,6 @@ from sending.backends.redis import RedisPubSubManager
 REDIS_DSN = os.getenv("REDIS_DSN")
 
 
-@pytest.mark.redis
 class TestRedisBackend:
     """Redis backend tests
 

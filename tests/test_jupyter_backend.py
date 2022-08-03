@@ -16,7 +16,6 @@ def ipykernel():
     km.shutdown_kernel()
 
 
-@pytest.mark.jupyter
 class TestJupyterBackend:
     async def test_jupyter_backend(self, mocker, ipykernel):
         cb = mocker.MagicMock()

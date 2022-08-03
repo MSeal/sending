@@ -1,65 +1,61 @@
 import nox
+import nox_poetry
+
+LINT_PATHS = ["sending", "noxfile.py", "tests"]
+
+nox.options.reuse_existing_virtualenv = True
+nox.options.sessions = ["lint", "test"]
 
 
-def bootstrap_poetry(session):
-    session.install("poetry")
-    session.run("poetry", "install", "-E", "redis", "-E", "jupyter")
-
-
-def run(session, *args, **kwargs):
-    session.run("poetry", "run", *args, **kwargs)
-
-
-@nox.session
-def lint(session):
-    bootstrap_poetry(session)
-    run(session, "black", "sending")
-    run(session, "black", "tests")
-
-    run(session, "isort", "sending")
-    run(session, "isort", "tests")
-
-
-@nox.session
-def lint_check(session):
-    bootstrap_poetry(session)
-    run(session, "black", "--diff", "--check", "sending")
-    run(session, "black", "--diff", "--check", "tests")
-
-    run(session, "isort", "--diff", "--check", "sending")
-    run(session, "isort", "--diff", "--check", "tests")
-
-    run(session, "flake8", "sending", "--count", "--show-source", "--statistics", "--benchmark")
-    run(session, "flake8", "tests", "--count", "--show-source", "--statistics", "--benchmark")
-
-
-@nox.session(python = ["3.8", "3.9"])
-def test(session):
-    bootstrap_poetry(session)
-    run(session, "pytest", env={"SENDING__ENABLE_LOGGING": "True"})
-
-
-@nox.session(python = ["3.8", "3.9"])
-def test_redis(session):
-    # Requires you install and run redis-server first
-    bootstrap_poetry(session)
-    run(
-        session,
+@nox_poetry.session(python=["3.8", "3.9", "3.10"])
+def test(session: nox_poetry.Session):
+    session.run_always("poetry", "install", "-E", "redis", "-E", "jupyter", external=True)
+    session.run(
         "pytest",
-        "-m",
-        "redis",
+        "-v",
+        "--cov=sending",
         env={"SENDING__ENABLE_LOGGING": "True", "REDIS_DSN": "redis://localhost:6379"},
     )
 
 
-@nox.session(python = ["3.8", "3.9"])
-def test_jupyter(session):
-    # Requires you install and run redis-server first
-    bootstrap_poetry(session)
-    run(
-        session,
-        "pytest",
-        "-m",
-        "jupyter",
-        env={"SENDING__ENABLE_LOGGING": "True"},
-    )
+@nox_poetry.session(python="3.8")
+def lint(session: nox_poetry.Session):
+    session.notify("black_check")
+    session.notify("flake8")
+    session.notify("isort_check")
+
+
+@nox_poetry.session(python="3.8")
+def flake8(session: nox_poetry.Session):
+    session.install("flake8")
+    session.run("flake8", *LINT_PATHS, "--count", "--show-source", "--statistics", "--benchmark")
+
+
+@nox_poetry.session(python="3.8")
+def black_check(session: nox_poetry.Session):
+    session.install("black")
+    session.run("black", "--check", *LINT_PATHS)
+
+
+@nox_poetry.session(python="3.8")
+def isort_check(session: nox_poetry.Session):
+    session.install("isort")
+    session.run("isort", "--diff", "--check", *LINT_PATHS)
+
+
+@nox_poetry.session(python="3.8")
+def blacken(session: nox_poetry.Session):
+    session.install("black")
+    session.run("black", *LINT_PATHS)
+
+
+@nox_poetry.session(python="3.8")
+def isort_apply(session: nox_poetry.Session):
+    session.install("isort")
+    session.run("isort", *LINT_PATHS)
+
+
+@nox_poetry.session(python="3.8")
+def generate_coverage_xml(session: nox_poetry.Session):
+    session.install("coverage[toml]")
+    session.run("coverage", "xml")
