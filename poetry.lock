@@ -257,7 +257,7 @@ test = ["ipykernel", "pre-commit", "pytest", "pytest-cov", "pytest-timeout"]
 
 [[package]]
 name = "managed-service-fixtures"
-version = "0.1.2"
+version = "0.1.4"
 description = "Pytest fixtures to manage external services such as Cockroach DB, Vault, or Redis"
 category = "dev"
 optional = false
@@ -272,7 +272,7 @@ pydantic = ">=1.9.0,<2.0.0"
 pytest = ">=7.1.0,<8.0.0"
 pytest-asyncio = ">=0.19.0,<0.20.0"
 pytest-xdist = ">=2.5.0,<3.0.0"
-structlog = ">=22.1.0,<23.0.0"
+structlog = ">21"
 
 [[package]]
 name = "mccabe"
@@ -645,7 +645,7 @@ redis = ["aioredis"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "8276084607b13d6d95302eddf52c68c5538f0d6d64f632fa2190d80310a5a140"
+content-hash = "e726afc58b77c4e11586fc5d90f1ab9d6b1d0e7e6367a57c86c3fecc86967309"
 
 [metadata.files]
 aioredis = [
