@@ -1,3 +1,18 @@
+"""
+RTU is Noteable's real-time-update event structure for collaborative Notebook actions.
+
+This Backend speaks Websocket protocol and deals with RTU-structured messages going over websockets.
+RTU messages have the concept of a `channel` and unique `event` type. In terms of PubSub terminology,
+the `channel` in each RTU message will be the `topic` and the `event` will be the `message`.
+
+For the most part there's only two `channel`s we'll deal with:
+ - `system` - RTU validation server system messages, like authentication request / reply
+ - `files/{file-id}` - Delta's for changes to a Notebook file, such as cell content changing or new cells being added
+
+This Backend only deals with making the websocket connection, casting send/receive messages into RTU format,
+and making the initial Authentication and File Subscription requests. It does not incorporate squashing
+deltas into an in-memory Notebook representation.
+"""
 import asyncio
 import uuid
 
