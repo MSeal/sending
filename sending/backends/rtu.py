@@ -27,11 +27,14 @@ class RTUManager(AbstractPubSubManager):
         self.jwt = jwt
         self.file_id = file_id
         self.file_version_id = version_id
-        # Will be WebSocketClientProtocol
+
+        # Will be WebSocketClientProtocol, .unauth_ws is set immediately after websocket connect
+        # while .authed_ws is set after observing a valid Auth Reply event. Callback functions
+        # can be queued up but won't run until self.authed_ws is set.
         self.unauth_ws = asyncio.Future()
         self.authed_ws = asyncio.Future()
 
-        # Used to prevent automatic reconnect when shutting down
+        # Used to prevent automatic websocket reconnect when we're shutting down
         self._shutting_down = False
 
         # For debug and testing, gets set/reset after every received message
@@ -39,8 +42,10 @@ class RTUManager(AbstractPubSubManager):
         self.last_seen_message = None
         self.reconnections = 0
 
+        # Record every RTU message we see, primarily for debug/testing
         self.register_callback(self.record_last_seen_message)
 
+        # When we get the Auth reply, set .authed_ws and send a File subscribe request
         self.register_callback(
             self.on_auth_reply,
             on_predicate=lambda topic, msg: topic == "system" and msg.event == "authenticate_reply",
