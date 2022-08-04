@@ -72,7 +72,7 @@ class TestJupyterBackend:
         cb.reset_mock()
         system_event_cb.reset_mock()
         mgr.send("shell", "execute_request", {"code": "print('asdf')", "silent": False})
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
         await mgr.shutdown()
         cb.assert_called()
         system_event_cb.assert_not_called()
