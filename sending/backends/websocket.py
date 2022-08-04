@@ -71,8 +71,19 @@ class WebsocketManager(AbstractPubSubManager):
 
     async def record_last_seen_message(self, message: Any):
         """
-        Automatically registered callback on every RTU message that comes over the websocket.
-        Used for debugging and testing.
+        Automatically registered callback. Used for debugging and testing.
+
+        await mgr.next_event.wait()
+        assert mgr.last_seen_message == <what you expect>
+
+        Alternatively, if messages may come out of order, iterate until
+        you see the type of message you want to test for.
+
+        while True:
+            await asyncio.wait_for(mgr.next_event.wait(), timeout=1)
+            if mgr.last_seen_message['key_field'] == key_of_interest:
+                break
+        assert mgr.last_seen_message['value_field'] == expected_value
         """
         self.last_seen_message = message
         self.next_event.set()
