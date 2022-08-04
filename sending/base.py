@@ -21,10 +21,13 @@ SYSTEM_TOPIC = "__sending__"
 
 
 class SystemEvents(enum.Enum):
-    # Umbrella event for disconnects caused by circumstances out of the user's control.
-    # Could be a network error, or something like ZMQ's MAXMSGSIZE flag forcibly disconnecting
-    # the peer.
+    # We've forcibly disconnected from the pub/sub server.
+    # This is for situations where the underlying backend has forced a disconnect
+    # without the user asking. ZMQ MAXMSGSIZE cycling connections is a good example.
     FORCED_DISCONNECT = enum.auto()
+
+    # We've lost connection to the remote server.
+    REMOTE_DISCONNECT = enum.auto()
 
 
 class AbstractPubSubManager(abc.ABC):
@@ -307,6 +310,7 @@ class AbstractPubSubManager(abc.ABC):
 
     def schedule_for_delivery(self, topic, contents, _session_id=None):
         """Use contents to create and queue a message for the topic's feed."""
+        logger.debug(f"Scheduling message for delivery on topic: {topic}")
         message = QueuedMessage(topic, contents, _session_id)
         self.inbound_queue.put_nowait(message)
 
@@ -321,6 +325,7 @@ class AbstractPubSubManager(abc.ABC):
         return PubSubSession(self)
 
     def _emit_system_event(self, topic: str, event: SystemEvents):
+        logger.debug(f"Emitting system event: {event}")
         self.schedule_for_delivery(SYSTEM_TOPIC, {"event": event, "topic": topic})
 
 
