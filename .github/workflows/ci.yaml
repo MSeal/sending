@@ -23,6 +23,7 @@ jobs:
         uses: Gr1N/setup-poetry@v7
       - name: Install dependencies
         run: |
+          apt-get install libzmq3-dev
           poetry export -f requirements.txt --without-hashes --dev > /tmp/requirements.txt
           pip install --constraint=/tmp/requirements.txt nox_poetry
       - name: Setup Redis
