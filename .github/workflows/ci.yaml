@@ -25,8 +25,9 @@ jobs:
         run: |
           poetry export -f requirements.txt --without-hashes --dev > /tmp/requirements.txt
           pip install --constraint=/tmp/requirements.txt nox_poetry
-      - name: Start Redis
+      - name: Setup Redis
         uses: ./.github/actions/setup-redis
+      - name: Start Redis
         run: redis-server
       - name: Run tests
         run: nox -s test-${{ matrix.python_version }}
