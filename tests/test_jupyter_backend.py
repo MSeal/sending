@@ -64,7 +64,7 @@ class TestJupyterBackend:
         mgr.send(
             "shell", "execute_request", {"code": f"print('{os.urandom(2048)}')", "silent": False}
         )
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
         await mgr._drain_queues()
         cb.assert_called()
         system_event_cb.assert_called()

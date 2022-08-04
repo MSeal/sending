@@ -103,6 +103,7 @@ class JupyterKernelManager(AbstractPubSubManager):
             while await socket.poll(0):
                 msg = await recv_monitor_message(socket, flags=NOBLOCK)
                 if msg["event"] == Event.DISCONNECTED:
+                    logger.debug(f"ZMQ disconnect event: {msg['value']=}")
                     if Event.ACCEPT_FAILED in msg["value"]:
                         # Happens during forced client disconnects.
                         self._emit_system_event(topic, SystemEvents.FORCED_DISCONNECT)
