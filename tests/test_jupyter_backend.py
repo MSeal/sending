@@ -8,7 +8,7 @@ from sending.backends.jupyter import JupyterKernelManager
 from sending.base import SystemEvents
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def ipykernel():
     km, kc = manager.start_new_kernel()
     yield kc.get_connection_info()
@@ -76,3 +76,18 @@ class TestJupyterBackend:
         await mgr.shutdown()
         cb.assert_called()
         system_event_cb.assert_not_called()
+
+    async def test_force_close(self, mocker):
+        remote_disconnect_db = mocker.MagicMock()
+        forced_disconnect_db = mocker.MagicMock()
+        km, kc = manager.start_new_kernel()
+        mgr = JupyterKernelManager(kc.get_connection_info())
+        await mgr.initialize()
+        await mgr.subscribe_to_topic("shell")
+        mgr.register_callback(forced_disconnect_db, on_system_event=SystemEvents.FORCED_DISCONNECT)
+        mgr.register_callback(remote_disconnect_db, on_system_event=SystemEvents.REMOTE_DISCONNECT)
+        kc.stop_channels()
+        km.shutdown_kernel()
+        await mgr.shutdown()
+        remote_disconnect_db.assert_called()
+        forced_disconnect_db.assert_not_called()

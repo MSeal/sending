@@ -98,17 +98,23 @@ class JupyterKernelManager(AbstractPubSubManager):
                 except Empty:
                     break
 
-        disconnected_topics = []
+        topics_to_cycle = []
         for topic, socket in self._monitor_sockets_for_topic.items():
             while await socket.poll(0):
                 msg = await recv_monitor_message(socket, flags=NOBLOCK)
                 if msg["event"] == Event.DISCONNECTED:
-                    disconnected_topics.append(topic)
+                    if Event.ACCEPT_FAILED in msg["value"]:
+                        # Happens during forced client disconnects.
+                        self._emit_system_event(topic, SystemEvents.FORCED_DISCONNECT)
+                        topics_to_cycle.append(topic)
+                    elif Event.BIND_FAILED in msg["value"]:
+                        # Happens for all disconnects.
+                        self._emit_system_event(topic, SystemEvents.REMOTE_DISCONNECT)
+                        topics_to_cycle.append(topic)
 
-        for topic in disconnected_topics:
+        for topic in topics_to_cycle:
             # If the ZMQ socket is disconnected, try cycling it
             # This is helpful in situations where ZMQ disconnects peers
             # when it violates some constraint such as the max message size.
             logger.info(f"ZMQ disconnected for topic '{topic}', cycling socket")
-            self._emit_system_event(topic, SystemEvents.FORCED_DISCONNECT)
             self._cycle_socket(topic)
