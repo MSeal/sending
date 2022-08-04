@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Contributing / Code of Conduct files
   - Issue templates
   - CI/CD files and noxfile syntax
+- `WebsocketManager` Backend
 
 ### Changed
 - Use `managed_service_fixtures` for Redis tests

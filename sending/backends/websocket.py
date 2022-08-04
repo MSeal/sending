@@ -1,0 +1,191 @@
+import asyncio
+from typing import Any, Callable, Optional
+
+import structlog
+import websockets
+
+from sending.base import AbstractPubSubManager, QueuedMessage
+from sending.util import ensure_async
+
+logger = structlog.get_logger(__name__)
+
+
+class WebsocketManager(AbstractPubSubManager):
+    def __init__(self, ws_url: str):
+        """
+        Websocket-based Sending backend. This class handles creating the initial
+        websocket connection and reconnecting on server-side disconnect.
+
+        One key difference between this Backend and others is that it ignores
+        the concept of `topic`. All messages seen over the wire are dropped
+        onto the inbound queue with topic '', and .send() is overwritten
+        to only take a message, defaulting outbound topic to ''.
+
+        Real-world applications are likely to subclass this and add hooks
+        either as class methods or attach them to an instance after init.
+
+         - inbound_message_hook: deserialize incoming messages over websocket
+         - outbound_message_hook: serialize outgoing messages over websocket
+         - init_hook: called after websocket connection is established
+         - auth_hook: called just before init_hook, useful if you need to send
+                      some kind of auth request. This effects .send(), make sure
+                      you also register a callback to .on_auth that is called
+                      when you receive an auth response.
+        """
+        super().__init__()
+        self.ws_url = ws_url
+
+        # An unauth_ws and authed_ws pair of Futures are created so that
+        # sub-classes can easily implement a pattern where messages are only
+        # sent to the server after the session has been authenticated.
+        self.unauth_ws = asyncio.Future()
+        self.authed_ws = asyncio.Future()
+
+        # When an outbound worker is ready to send a message over the wire, it
+        # calls ._publish which will await the unauth_ws or authed_ws Future.
+        # However, if something goes wrong and those Futures never resolve then
+        # it can leave you in a hard-to-debug state. So ._publish should use an
+        # asyncio.wait_for(await <ws future>, timeout=self.publish_timeout)
+        self.publish_timeout: float = 5.0
+
+        # Used to prevent automatic websocket reconnect when we're trying to shutdown
+        self._shutting_down = False
+
+        # For debug and testing, .next_event gets set/cleared after every received message
+        self.next_event = asyncio.Event()
+        self.last_seen_message = None
+        self.reconnections = 0
+        # If this is set, then the WebsocketManager will stop reconnecting after this
+        # many reconnections.
+        self.max_reconnections = None
+
+        # Optional hooks that can be defined in a subclass or attached to an instance.
+        # First auth_hook then init_hook are called immediately after websocket connection
+        # They're separated into two hooks in case a subclass needs to authenticate, and
+        # also queue up initial messages that use .send() (which will wait until auth is accepted)
+        if not hasattr(self, "auth_hook"):
+            self.auth_hook: Optional[Callable] = None
+        self.init_hook: Optional[Callable] = None
+
+        self.register_callback(self.record_last_seen_message)
+
+    async def record_last_seen_message(self, message: Any):
+        """
+        Automatically registered callback on every RTU message that comes over the websocket.
+        Used for debugging and testing.
+        """
+        self.last_seen_message = message
+        self.next_event.set()
+        self.next_event.clear()
+
+    async def on_auth(self, message: Any):
+        """
+        Example callback for what should happen when an auth flow is complete
+        """
+        self.authed_ws.set_result(self.unauth_ws.result())
+
+    async def send(self, message: Any):
+        """
+        Override the default Sending behavior to only accept a message instead of topic + message.
+        Topic is not a concept supported in this Backend.
+        """
+        # QueuedMessage is a NamedTuple of topic, contents, session_id
+        self.outbound_queue.put_nowait(QueuedMessage("", message, None))
+
+    async def _publish(self, message: QueuedMessage):
+        """
+        Once a message has been picked up from the inbound queue, processed by a callback,
+        then dropped onto the outbound queue, the outbound worker will call this method.
+
+        QueuedMessage is namedtuple of topic, contents, session_id. Only contents matter
+        for this Backend.
+
+        Subclasses that need to serialize outbound data can define a .outbound_message_hook
+        instead of overriding this method. For instance, if using self.send(<pydantic model>)
+        you may want to define .outbound_message_hook = lambda model: model.json()
+        """
+        # Assume if an implementation has an auth_hook then it wants to delay
+        # sending outbound messages over the wire until the session is authenticated.
+        # use asyncio.wait_for so we don't end up in a hard-to-debug state if a Future
+        # doesn't resolve for some reason.
+
+        if self.auth_hook:
+            if not self.authed_ws.done():
+                logger.info("Message queued, waiting for authed_ws to be set")
+            ws = await asyncio.wait_for(self.authed_ws, timeout=self.publish_timeout)
+        else:
+            ws = await asyncio.wait_for(self.unauth_ws, timeout=self.publish_timeout)
+        logger.info(f"Sending: {message.contents}")
+        await ws.send(message.contents)
+
+    async def _poll_loop(self):
+        """
+        When WebsocketManager.initialize() is awaited, it creates an asyncio Task that runs
+        this function. This is the meat of the WebsocketManager class. It handles creating
+        the websocket connection, reconnecting if the server disconnects, receiving messages
+        over the wire, and putting them onto the inbound message queue.
+
+        It also uses authentication pattern hooks if they're implemented.
+        """
+        # Automatic reconnect https://websockets.readthedocs.io/en/stable/reference/client.html
+        async for websocket in websockets.connect(self.ws_url):
+            try:
+                self.unauth_ws.set_result(websocket)
+                # Call the auth and init hooks (casting to async if necessary), passing in 'self'
+                if self.auth_hook:
+                    fn = ensure_async(self.auth_hook)
+                    await fn(self)
+                if self.init_hook:
+                    fn = ensure_async(self.init_hook)
+                    await fn(self)
+                async for message in websocket:
+                    logger.info(f"Received: {message}")
+                    self.schedule_for_delivery(topic="", contents=message)
+            except websockets.ConnectionClosed:
+                # This will get raised if there's an error trying to connect,
+                # keeping it separate from unknown exceptions that a subclass might want
+                # to handle differently.
+                continue
+            except Exception as e:
+                await self.on_exception(e)
+                continue
+            finally:
+                if self._shutting_down:
+                    break
+                elif self.max_reconnections and self.reconnections >= self.max_reconnections:
+                    break
+                logger.info("Websocket server disconnected, resetting Futures and reconnecting")
+                self.unauth_ws = asyncio.Future()
+                self.authed_ws = asyncio.Future()
+                self.reconnections += 1
+
+    async def shutdown(self, now: bool = False):
+        """
+        Custom shutdown logic to take account of closing our automatically-reconnecting websocket.
+        In an ideal world, we drain all outbound messages, stop the task that's reading new
+        inbound messages, and then perform the websocket close handshake.
+        """
+        self._shutting_down = True
+        await super().shutdown(now)
+        if self.unauth_ws.done():
+            ws = await self.unauth_ws
+            await ws.close()
+
+    async def on_exception(self, exc: Exception):
+        # Called when we get an exception iterating over websocket messages before
+        # we reconnect, in case a Subclass wants to do something with it
+        pass
+
+    async def _create_topic_subscription(self, topic_name: str):
+        # Required method by the ABC base, but topics are irrelevant to this Backend
+        pass
+
+    async def _cleanup_topic_subscription(self, topic_name: str):
+        # Required method by the ABC base, but topics are irrelevant to this Backend
+        pass
+
+    async def _poll(self):
+        # Required method by the ABC base, but never used.
+        # Normally this does some kind of message cleaning and adds the message onto
+        # the inbound queue to be processed. _poll_loop handles that in this Backend.
+        pass
