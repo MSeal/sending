@@ -21,6 +21,7 @@ class JupyterKernelManager(AbstractPubSubManager):
     ):
         self._client = AsyncKernelClient()
         self._client.load_connection_info(self.connection_info)
+        self.set_context_option(SocketOption.RECONNECT_STOP, 1)
         if self.max_message_size:
             self.set_context_option(SocketOption.MAXMSGSIZE, self.max_message_size)
 
@@ -107,12 +108,11 @@ class JupyterKernelManager(AbstractPubSubManager):
                     if Event.ACCEPT_FAILED in msg["value"]:
                         # Happens during forced client disconnects.
                         self._emit_system_event(topic, SystemEvents.FORCED_DISCONNECT)
-                        topics_to_cycle.append(topic)
                     elif Event.BIND_FAILED in msg["value"]:
                         # Happens for all disconnects.
                         self._emit_system_event(topic, SystemEvents.REMOTE_DISCONNECT)
-                        topics_to_cycle.append(topic)
 
+                    topics_to_cycle.append(topic)
 
         for topic in topics_to_cycle:
             # If the ZMQ socket is disconnected, try cycling it
