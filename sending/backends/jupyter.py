@@ -4,6 +4,7 @@ from typing import Optional, Union
 from jupyter_client import AsyncKernelClient
 from zmq import NOBLOCK, Event, Socket, SocketOption
 from zmq.utils.monitor import recv_monitor_message
+from zmq.asyncio import Context
 
 from ..base import AbstractPubSubManager, QueuedMessage, SystemEvents
 from ..logging import logger
@@ -19,11 +20,13 @@ class JupyterKernelManager(AbstractPubSubManager):
     async def initialize(
         self, *, queue_size=0, inbound_workers=1, outbound_workers=1, poll_workers=1
     ):
-        self._client = AsyncKernelClient()
-        self._client.load_connection_info(self.connection_info)
+        self._context = Context()
         self.set_context_option(SocketOption.RECONNECT_STOP, 1)
         if self.max_message_size:
             self.set_context_option(SocketOption.MAXMSGSIZE, self.max_message_size)
+
+        self._client = AsyncKernelClient(context=self._context)
+        self._client.load_connection_info(self.connection_info)
 
         return await super().initialize(
             queue_size=queue_size,
@@ -35,10 +38,10 @@ class JupyterKernelManager(AbstractPubSubManager):
     async def shutdown(self, now=False):
         await super().shutdown(now)
         # https://github.com/zeromq/pyzmq/issues/1003
-        self._client.context.destroy(linger=0)
+        self._context.destroy(linger=0)
 
     def set_context_option(self, option: int, val: Union[int, bytes]):
-        self._client.context.setsockopt(option, val)
+        self._context.setsockopt(option, val)
 
     async def _create_topic_subscription(self, topic_name: str):
         if hasattr(self._client, f"{topic_name}_channel"):
