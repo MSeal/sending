@@ -29,6 +29,7 @@ nox-poetry = "^1.0.1"
 pytest-cov = "^3.0.0"
 uvicorn = "^0.18.2"
 fastapi = "^0.79.0"
+httpx = "^0.23.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
