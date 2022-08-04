@@ -2,7 +2,7 @@ from queue import Empty
 from typing import Optional, Union
 
 from jupyter_client import AsyncKernelClient
-from zmq import NOBLOCK, Event, Socket, SocketOption
+from zmq import NOBLOCK, Event, Socket, SocketOption, zmq_version, pyzmq_version
 from zmq.utils.monitor import recv_monitor_message
 from zmq.asyncio import Context
 
@@ -20,8 +20,8 @@ class JupyterKernelManager(AbstractPubSubManager):
     async def initialize(
         self, *, queue_size=0, inbound_workers=1, outbound_workers=1, poll_workers=1
     ):
+        logger.debug(f"Initializing Jupyter Kernel Manager: {zmq_version()=}, {pyzmq_version()=}")
         self._context = Context()
-        self.set_context_option(SocketOption.RECONNECT_STOP, 1)
         if self.max_message_size:
             self.set_context_option(SocketOption.MAXMSGSIZE, self.max_message_size)
 
@@ -111,11 +111,11 @@ class JupyterKernelManager(AbstractPubSubManager):
                     if Event.ACCEPT_FAILED in msg["value"]:
                         # Happens during forced client disconnects.
                         self._emit_system_event(topic, SystemEvents.FORCED_DISCONNECT)
+                        topics_to_cycle.append(topic)
                     elif Event.BIND_FAILED in msg["value"]:
                         # Happens for all disconnects.
                         self._emit_system_event(topic, SystemEvents.REMOTE_DISCONNECT)
-
-                    topics_to_cycle.append(topic)
+                        topics_to_cycle.append(topic)
 
         for topic in topics_to_cycle:
             # If the ZMQ socket is disconnected, try cycling it
