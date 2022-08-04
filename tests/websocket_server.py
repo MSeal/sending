@@ -1,6 +1,6 @@
 """
 A FastAPI app used to test the WebsocketManager Sending backend. This thing
-gets spun up as an external service using managed-service-fixtures in 
+gets spun up as an external service using managed-service-fixtures in
 tests/test_websocket_backend.py.
 """
 
