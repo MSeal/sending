@@ -16,7 +16,7 @@ def test(session: nox_poetry.Session):
         "pytest",
         "-v",
         "--cov=sending",
-        env={"SENDING__ENABLE_LOGGING": "True", "REDIS_DSN": "redis://localhost:6379"},
+        env={"SENDING__ENABLE_LOGGING": "True"},
     )
 
 

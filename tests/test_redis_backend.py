@@ -5,8 +5,6 @@ from managed_service_fixtures import RedisDetails
 
 from sending.backends.redis import RedisPubSubManager
 
-REDIS_DSN = os.getenv("REDIS_DSN")
-
 
 class TestRedisBackend:
     """Redis backend tests
