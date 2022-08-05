@@ -65,7 +65,8 @@ class WebsocketManager(AbstractPubSubManager):
         # also queue up initial messages that use .send() (which will wait until auth is accepted)
         if not hasattr(self, "auth_hook"):
             self.auth_hook: Optional[Callable] = None
-        self.init_hook: Optional[Callable] = None
+        if not hasattr(self, "init_hook"):
+            self.init_hook: Optional[Callable] = None
 
         self.register_callback(self.record_last_seen_message)
 
