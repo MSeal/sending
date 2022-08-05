@@ -118,6 +118,7 @@ async def test_bad_auth_hook(json_manager: WebsocketManager):
     await json_manager.initialize()
     with pytest.raises(asyncio.TimeoutError):
         await json_manager.send({"type": "authed_echo_request", "text": "Hello auth"})
+        await asyncio.sleep(2)
 
 
 async def test_auth_hook(json_manager: WebsocketManager):
