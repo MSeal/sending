@@ -26,9 +26,6 @@ class SystemEvents(enum.Enum):
     # without the user asking. ZMQ MAXMSGSIZE cycling connections is a good example.
     FORCED_DISCONNECT = enum.auto()
 
-    # We've lost connection to the remote server.
-    REMOTE_DISCONNECT = enum.auto()
-
 
 class AbstractPubSubManager(abc.ABC):
     """
