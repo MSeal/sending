@@ -17,8 +17,22 @@ It has three primary goals:
 
 ## Installation
 
+By default, only the libraries required for the `InMemoryPubSubManager` backend are installed. For other backends, extra libraries are required. To support all backends, use the extras argument `all`.
+
 ```bash
+# pip
 pip install sending
+# with a specific backend
+pip install sending[jupyter]
+# or all backends
+pip install sending[all]
+
+# poetry
+poetry add sending
+# with a specific backend
+poetry add sending -E jupyter
+# or all backends
+poetry add sending -E all
 ```
 
 ## Developing

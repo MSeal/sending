@@ -15,6 +15,7 @@ websockets = {version = "^10.3", optional = true}
 redis = ["aioredis"]
 jupyter = ["jupyter_client", "ipykernel"]
 websockets = ["websockets"]
+all = ["aioredis", "jupyter_client", "ipykernel", "websockets"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
