@@ -2,9 +2,9 @@ from queue import Empty
 from typing import Optional, Union
 
 from jupyter_client import AsyncKernelClient
-from zmq import NOBLOCK, Event, Socket, SocketOption, zmq_version, pyzmq_version
-from zmq.utils.monitor import recv_monitor_message
+from zmq import NOBLOCK, Event, Socket, SocketOption, pyzmq_version, zmq_version
 from zmq.asyncio import Context
+from zmq.utils.monitor import recv_monitor_message
 
 from ..base import AbstractPubSubManager, QueuedMessage, SystemEvents
 from ..logging import logger

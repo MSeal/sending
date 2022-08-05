@@ -49,7 +49,7 @@ class TestJupyterBackend:
         iopub = mocker.MagicMock()
         disconnect_event = mocker.MagicMock()
 
-        mgr = JupyterKernelManager(ipykernel, max_message_size=5*1024)
+        mgr = JupyterKernelManager(ipykernel, max_message_size=5 * 1024)
         await mgr.initialize()
         mgr.register_callback(iopub, on_topic="iopub")
         mgr.register_callback(disconnect_event, on_system_event=SystemEvents.FORCED_DISCONNECT)
