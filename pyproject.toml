@@ -9,10 +9,13 @@ python = "^3.9"
 aioredis = {extras = ["hiredis"], version = "^2.0.0", optional = true}
 jupyter_client = {version = "^7.3.0", optional = true}
 ipykernel = {version = "^6.15.1", optional = true}
+websockets = {version = "^10.3", optional = true}
 
 [tool.poetry.extras]
 redis = ["aioredis"]
 jupyter = ["jupyter_client", "ipykernel"]
+websockets = ["websockets"]
+all = ["aioredis", "jupyter_client", "ipykernel", "websockets"]
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
@@ -25,6 +28,9 @@ nox = "^2022.1.7"
 managed-service-fixtures = "^0.1.4"
 nox-poetry = "^1.0.1"
 pytest-cov = "^3.0.0"
+uvicorn = "^0.18.2"
+fastapi = "^0.79.0"
+httpx = "^0.23.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

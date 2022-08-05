@@ -51,8 +51,11 @@ class AbstractPubSubManager(abc.ABC):
         self.callbacks_by_id: Dict[UUID, Callback] = {}
         self.callback_ids_by_session: Dict[UUID, Set[UUID]] = defaultdict(set)
 
-        self.inbound_message_hook: Coroutine = None
-        self.outbound_message_hook: Coroutine = None
+        # Allow these hooks to be defined within the class or attached to an instance
+        if not hasattr(self, "inbound_message_hook"):
+            self.inbound_message_hook: Coroutine = None
+        if not hasattr(self, "outbound_message_hook"):
+            self.outbound_message_hook: Coroutine = None
 
     async def initialize(
         self,
