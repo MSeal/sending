@@ -124,7 +124,7 @@ class WebsocketManager(AbstractPubSubManager):
             if not self.authed_ws.done():
                 # special logging here because this is a sign that you might be in
                 # a particularly bad position. Something called .send() before
-                #   callback to .on_auth or similar 'set the authed_ws Future' triggered.
+                # callback to .on_auth or similar 'set the authed_ws Future' triggered.
                 logger.info("Message queued, waiting for authed_ws to be set")
             ws = await asyncio.wait_for(self.authed_ws, timeout=self.publish_timeout)
         else:
