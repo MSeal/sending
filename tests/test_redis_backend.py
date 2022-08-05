@@ -1,5 +1,4 @@
 import asyncio
-import os
 
 from managed_service_fixtures import RedisDetails
 
