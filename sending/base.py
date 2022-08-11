@@ -64,8 +64,18 @@ class AbstractPubSubManager(abc.ABC):
         inbound_workers=1,
         outbound_workers=1,
         poll_workers=1,
+        enable_polling=True,
     ):
-        """Initialize a pub-sub channel, specifically its queues and workers."""
+        """
+        Initialize a pub-sub channel, specifically its queues and workers.
+        If enable_polling is False, it will only start the inbound and outbound
+        workers, not the poll worker. That is useful if you're writing tests
+        and don't want a connection to external IO to be started.
+
+        E.g.
+        await mgr.initialize(enable_polling=False)
+
+        """
         self.outbound_queue = asyncio.Queue(queue_size)
         self.inbound_queue = asyncio.Queue(queue_size)
 
@@ -75,8 +85,9 @@ class AbstractPubSubManager(abc.ABC):
         for i in range(inbound_workers):
             self.inbound_workers.append(asyncio.create_task(self._inbound_worker()))
 
-        for i in range(poll_workers):
-            self.poll_workers.append(asyncio.create_task(self._poll_loop()))
+        if enable_polling:
+            for i in range(poll_workers):
+                self.poll_workers.append(asyncio.create_task(self._poll_loop()))
 
     async def shutdown(self, now=False):
         """Shut down a pub-sub channel and its related queues and workers"""

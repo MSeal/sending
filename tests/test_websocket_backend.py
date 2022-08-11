@@ -206,3 +206,18 @@ async def test_hooks_in_subclass(websocket_server: AppDetails):
     reply = await run_until_message_type(mgr, "authed_echo_reply")
     assert reply == {"type": "authed_echo_reply", "text": "Hello subclass"}
     await mgr.shutdown()
+
+
+async def test_disable_polling(mocker):
+    mgr = WebsocketManager(ws_url="ws://test")
+    publish = mocker.patch.object(mgr, "_publish")
+    await mgr.initialize(enable_polling=False)
+
+    @mgr.callback(on_topic="")
+    def echo(msg):
+        mgr.send(msg)
+
+    mgr.schedule_for_delivery(topic="", contents="echo test")
+    await asyncio.sleep(0.01)
+    publish.assert_called_once_with(QueuedMessage(topic="", contents="echo test", session_id=None))
+    await mgr.shutdown()
