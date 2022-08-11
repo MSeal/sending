@@ -126,11 +126,11 @@ class WebsocketManager(AbstractPubSubManager):
                 # special logging here because this is a sign that you might be in
                 # a particularly bad position. Something called .send() before
                 # callback to .on_auth or similar 'set the authed_ws Future' triggered.
-                logger.info("Message queued, waiting for authed_ws to be set")
+                logger.debug("Message queued, waiting for authed_ws to be set")
             ws = await asyncio.wait_for(self.authed_ws, timeout=self.publish_timeout)
         else:
             ws = await asyncio.wait_for(self.unauth_ws, timeout=self.publish_timeout)
-        logger.info(f"Sending: {message.contents}")
+        logger.debug(f"Sending: {message.contents}")
         await ws.send(message.contents)
 
     async def _poll_loop(self):
@@ -154,7 +154,7 @@ class WebsocketManager(AbstractPubSubManager):
                     fn = ensure_async(self.init_hook)
                     await fn(self)
                 async for message in websocket:
-                    logger.info(f"Received: {message}")
+                    logger.debug(f"Received: {message}")
                     self.schedule_for_delivery(topic="", contents=message)
             except websockets.ConnectionClosed:
                 # This will get raised if there's an error trying to connect,
