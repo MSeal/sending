@@ -8,6 +8,7 @@ import pytest
 from managed_service_fixtures import AppDetails, AppManager
 
 from sending.backends.websocket import WebsocketManager
+from sending.base import QueuedMessage
 
 
 @pytest.fixture(scope="session")
