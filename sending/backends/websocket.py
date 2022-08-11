@@ -96,7 +96,7 @@ class WebsocketManager(AbstractPubSubManager):
         """
         self.authed_ws.set_result(self.unauth_ws.result())
 
-    async def send(self, message: Any):
+    def send(self, message: Any):
         """
         Override the default Sending behavior to only accept a message instead of topic + message.
         Topic is not a concept supported in this Backend.
