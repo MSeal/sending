@@ -66,7 +66,7 @@ async def test_basic_send(manager: WebsocketManager):
     """
     await manager.initialize()
     assert manager.auth_hook is None
-    await manager.send(json.dumps({"type": "unauthed_echo_request", "text": "Hello plain_manager"}))
+    manager.send(json.dumps({"type": "unauthed_echo_request", "text": "Hello plain_manager"}))
     await asyncio.wait_for(manager.next_event.wait(), 1)
     reply = json.loads(manager.last_seen_message)
     assert reply == {"type": "unauthed_echo_reply", "text": "Hello plain_manager"}
@@ -77,7 +77,7 @@ async def test_message_hooks(json_manager: WebsocketManager):
     Test that the inbound and outbound message hooks serialize/deserialize json
     """
     await json_manager.initialize()
-    await json_manager.send({"type": "unauthed_echo_request", "text": "Hello json_manager"})
+    json_manager.send({"type": "unauthed_echo_request", "text": "Hello json_manager"})
     reply = await run_until_message_type(json_manager, "unauthed_echo_reply")
     assert reply == {"type": "unauthed_echo_reply", "text": "Hello json_manager"}
 
@@ -88,7 +88,7 @@ async def test_init_hook(json_manager: WebsocketManager):
     """
 
     async def init_hook(mgr: WebsocketManager):
-        await mgr.send({"type": "unauthed_echo_request", "text": "Hello init_hook"})
+        mgr.send({"type": "unauthed_echo_request", "text": "Hello init_hook"})
 
     json_manager.init_hook = init_hook
     await json_manager.initialize()
@@ -159,7 +159,7 @@ async def test_auth_on_reconnect(json_manager: WebsocketManager, websocket_serve
     )
     await json_manager.initialize()
     # test that we're authenticated on the server side
-    await json_manager.send({"type": "authed_echo_request", "text": "Hello auth"})
+    json_manager.send({"type": "authed_echo_request", "text": "Hello auth"})
     reply = await run_until_message_type(json_manager, "authed_echo_reply")
     assert reply == {"type": "authed_echo_reply", "text": "Hello auth"}
 
@@ -168,7 +168,7 @@ async def test_auth_on_reconnect(json_manager: WebsocketManager, websocket_serve
         resp = await client.get(f"/disconnect/{token}")
     assert resp.status_code == 204
 
-    await json_manager.send({"type": "authed_echo_request", "text": "Hello auth2"})
+    json_manager.send({"type": "authed_echo_request", "text": "Hello auth2"})
     reply = await run_until_message_type(json_manager, "authed_echo_reply")
     assert reply == {"type": "authed_echo_reply", "text": "Hello auth2"}
 
@@ -202,7 +202,7 @@ async def test_hooks_in_subclass(websocket_server: AppDetails):
 
     mgr = Sub(ws_url=websocket_server.ws_base + "/ws")
     await mgr.initialize()
-    await mgr.send({"type": "authed_echo_request", "text": "Hello subclass"})
+    mgr.send({"type": "authed_echo_request", "text": "Hello subclass"})
     reply = await run_until_message_type(mgr, "authed_echo_reply")
     assert reply == {"type": "authed_echo_reply", "text": "Hello subclass"}
     await mgr.shutdown()
