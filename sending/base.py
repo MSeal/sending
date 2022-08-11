@@ -73,8 +73,19 @@ class AbstractPubSubManager(abc.ABC):
         and don't want a connection to external IO to be started.
 
         E.g.
-        await mgr.initialize(enable_polling=False)
+        mgr = SomeBackend()
+        publish = mocker.patch.object(mgr, "_publish")
 
+        @mgr.callback(on_topic="test-topic")
+        def echo(msg: str):
+            mgr.send(topic_name="test-topic", message=msg)
+
+        await mgr.initialize(enable_polling=False)
+        mgr.schedule_for_delivery(topic="test-topic", contents="echo test")
+        await asyncio.sleep(0.01)
+        publish.assert_called_once_with(
+            QueuedMessage(topic="test-topic, contents="echo test", session_id=None)
+        )
         """
         self.outbound_queue = asyncio.Queue(queue_size)
         self.inbound_queue = asyncio.Queue(queue_size)

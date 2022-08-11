@@ -209,6 +209,15 @@ async def test_hooks_in_subclass(websocket_server: AppDetails):
 
 
 async def test_disable_polling(mocker):
+    """
+    Test that registered callbacks (record_last_seen_message) are still called
+    when we use .schedule_for_delivery after initializing the WebsocketManager
+    with the enable_polling=False flag, so it doesn't attempt to make a connection
+    to an external server.
+
+    Also test that callbacks which call .send() do drop messages into the _publish
+    method, which would normally then send data over the wire.
+    """
     mgr = WebsocketManager(ws_url="ws://test")
     publish = mocker.patch.object(mgr, "_publish")
     await mgr.initialize(enable_polling=False)
@@ -218,6 +227,8 @@ async def test_disable_polling(mocker):
         mgr.send(msg)
 
     mgr.schedule_for_delivery(topic="", contents="echo test")
+    await mgr.next_event.wait()
+    assert mgr.last_seen_message == "echo test"
     await asyncio.sleep(0.01)
     publish.assert_called_once_with(QueuedMessage(topic="", contents="echo test", session_id=None))
     await mgr.shutdown()
