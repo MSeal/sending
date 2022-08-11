@@ -1,3 +1,4 @@
+import asyncio
 from functools import partial
 
 import pytest
@@ -286,3 +287,24 @@ class TestInMemoryPubSubManager:
         await manager._drain_queues()
         system_event_cb.assert_called()
         topic_cb.assert_not_called()
+
+    async def test_initialize_disabled_polling(self, mocker):
+        """
+        test that using initialize(enable_polling=False) still starts the inbound and
+        outbound worker queues, so that registering callbacks that use .send() and
+        triggering those with .schedule_for_delivery run and eventually delegate messages
+        to ._publish.
+        """
+        mgr = InMemoryPubSubManager()
+        publish = mocker.patch.object(mgr, "_publish")
+
+        @mgr.callback(on_topic="")
+        def echo(msg: str):
+            mgr.send(topic_name="", message=msg)
+
+        await mgr.initialize(enable_polling=False)
+        mgr.schedule_for_delivery(topic="", contents="echo test")
+        await asyncio.sleep(0.01)
+        publish.assert_called_once_with(
+            QueuedMessage(topic="", contents="echo test", session_id=None)
+        )
