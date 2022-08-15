@@ -1,13 +1,13 @@
 import asyncio
+import logging
 from typing import Any, Callable, Optional
 
-import structlog
 import websockets
 
 from sending.base import AbstractPubSubManager, QueuedMessage
 from sending.util import ensure_async
 
-logger = structlog.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class WebsocketManager(AbstractPubSubManager):
