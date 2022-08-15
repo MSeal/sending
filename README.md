@@ -65,29 +65,3 @@ nox -s lint
 ```
 nox -s lint_check
 ```
-
-## Websocket Logging
-
-`WebsocketBackend` uses `structlog` for its logs. To view or suppress logs such as `Sending` and `Received` for all messages coming over the websocket, use this minimal structlog code.
-
-```
-import structlog
-import logging
-
-processors = [
-    structlog.stdlib.add_logger_name,
-    structlog.stdlib.add_log_level,
-    structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
-]
-
-structlog.configure(
-    processors=processors, logger_factory=structlog.stdlib.LoggerFactory()
-)
-
-logging.basicConfig()
-# enable debug logs
-logging.getLogger("sending.backends.websocket").setLevel(logging.DEBUG)
-
-# suppress debug logs
-logging.getLogger("sending.backends.websocket").setLevel(logging.INFO)
-```
