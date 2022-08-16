@@ -168,7 +168,8 @@ class WebsocketManager(AbstractPubSubManager):
                 if self._shutting_down:
                     break
                 elif self.max_reconnections and self.reconnections >= self.max_reconnections:
-                    break
+                    logger.warning("Hit max reconnection attempts, not reconnecting")
+                    return await self.shutdown()
                 logger.info("Websocket server disconnected, resetting Futures and reconnecting")
                 self.unauth_ws = asyncio.Future()
                 self.authed_ws = asyncio.Future()
@@ -189,7 +190,7 @@ class WebsocketManager(AbstractPubSubManager):
     async def on_exception(self, exc: Exception):
         # Called when we get an exception iterating over websocket messages before
         # we reconnect, in case a Subclass wants to do something with it
-        pass
+        logger.exception(exc)
 
     async def _create_topic_subscription(self, topic_name: str):
         # Required method by the ABC base, but topics are irrelevant to this Backend
