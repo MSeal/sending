@@ -145,6 +145,8 @@ async def test_auth_hook(json_manager: WebsocketManager):
 async def test_auth_on_reconnect(json_manager: WebsocketManager, websocket_server: AppDetails):
     """
     Test that the auth hook is called after the websocket connects.
+    Also test that if we set max_reconnections to 1, then the Manager begins shutting down
+    when observing a second disconnect from the server.
     """
     token = str(uuid.UUID(int=2))
 
@@ -158,6 +160,7 @@ async def test_auth_on_reconnect(json_manager: WebsocketManager, websocket_serve
         json_manager.on_auth,
         on_predicate=lambda topic, msg: msg["type"] == "auth_reply" and msg["success"],
     )
+    json_manager.max_reconnections = 1
     await json_manager.initialize()
     # test that we're authenticated on the server side
     json_manager.send({"type": "authed_echo_request", "text": "Hello auth"})
@@ -173,7 +176,16 @@ async def test_auth_on_reconnect(json_manager: WebsocketManager, websocket_serve
     reply = await run_until_message_type(json_manager, "authed_echo_reply")
     assert reply == {"type": "authed_echo_reply", "text": "Hello auth2"}
 
+    assert not json_manager._shutting_down
     assert json_manager.reconnections == 1
+
+    # disconnect us for a second time, should not reconnect due to max_reconnections
+    async with httpx.AsyncClient(base_url=websocket_server.url) as client:
+        resp = await client.get(f"/disconnect/{token}")
+    assert resp.status_code == 204
+
+    await asyncio.sleep(0.01)
+    assert json_manager._shutting_down
 
 
 async def test_hooks_in_subclass(websocket_server: AppDetails):
