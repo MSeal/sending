@@ -47,7 +47,7 @@ class WebsocketManager:
     dependency = singleton
 
     async def connect(self, session: WebsocketSession):
-        await session.ws.accept()
+        await session.ws.accept(headers=[(b"foo", b"bar")])
         self.sessions.append(session)
 
     async def disconnect(self, session: WebsocketSession):

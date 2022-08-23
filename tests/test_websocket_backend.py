@@ -73,6 +73,22 @@ async def test_basic_send(manager: WebsocketManager):
     assert reply == {"type": "unauthed_echo_reply", "text": "Hello plain_manager"}
 
 
+async def test_response_header(manager: WebsocketManager):
+    """
+    The test websocket server will return a handful of response headers as part of the
+    websocket connection, such as {'upgrade': 'websocket', 'connection': 'Upgrade'}, etc.
+    It also includes a custom header {'foo': 'bar'}. In real world situations that response
+    header might be something like {'rtu-session-id': '<uuid>'}. Test that we save off
+    the response headers to the Manager instance on connect.
+    """
+    await manager.initialize()
+    # Give it a moment to connect
+    await asyncio.sleep(0.01)
+    assert (
+        manager.response_headers.get("foo") == "bar"
+    ), f"Missing foo: bar from {dict(manager.response_headers)}"
+
+
 async def test_message_hooks(json_manager: WebsocketManager):
     """
     Test that the inbound and outbound message hooks serialize/deserialize json

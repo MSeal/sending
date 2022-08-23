@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - CI/CD files and noxfile syntax
 - `WebsocketManager` Backend
 - New extra install `-E websockets`, additionally a convenience `-E all` option
+- `WebsocketManager` saves response headers on connect
 
 ### Changed
 - Use `managed_service_fixtures` for Redis tests
