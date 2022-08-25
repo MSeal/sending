@@ -35,9 +35,6 @@ class WebsocketManager(AbstractPubSubManager):
         super().__init__()
         self.ws_url = ws_url
 
-        # Save / overwrite response headers on each connection
-        self.response_headers = {}
-
         # An unauth_ws and authed_ws pair of Futures are created so that
         # sub-classes can easily implement a pattern where messages are only
         # sent to the server after the session has been authenticated.
