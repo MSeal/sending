@@ -5,7 +5,7 @@ import asyncio
 import enum
 from collections import defaultdict, namedtuple
 from functools import partial, wraps
-from typing import Callable, Coroutine, Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional, Set
 from uuid import UUID, uuid4
 
 from .logging import logger
