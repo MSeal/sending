@@ -129,7 +129,8 @@ class JupyterKernelManager(AbstractPubSubManager):
 
     async def _poll_loop(self):
         """
-        Override base Manager _poll_loop to switch the final asyncio.sleep from 0 to 0.001.
+        Override base Manager _poll_loop to switch the final asyncio.sleep from 0 to
+        something more than that (definable at init or after instantiation, default 0.005).
         While observing JupyterManager in real world, containers are using 100% CPU.
         Possibly due to this loop being too aggressive?
         """
