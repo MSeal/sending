@@ -5,6 +5,7 @@ from typing import Callable
 
 import httpx
 import pytest
+import structlog
 from managed_service_fixtures import AppDetails, AppManager
 
 from sending.backends.websocket import WebsocketManager
@@ -73,22 +74,6 @@ async def test_basic_send(manager: WebsocketManager):
     assert reply == {"type": "unauthed_echo_reply", "text": "Hello plain_manager"}
 
 
-async def test_response_header(manager: WebsocketManager):
-    """
-    The test websocket server will return a handful of response headers as part of the
-    websocket connection, such as {'upgrade': 'websocket', 'connection': 'Upgrade'}, etc.
-    It also includes a custom header {'foo': 'bar'}. In real world situations that response
-    header might be something like {'rtu-session-id': '<uuid>'}. Test that we save off
-    the response headers to the Manager instance on connect.
-    """
-    await manager.initialize()
-    # Give it a moment to connect
-    await asyncio.sleep(0.01)
-    assert (
-        manager.response_headers.get("foo") == "bar"
-    ), f"Missing foo: bar from {dict(manager.response_headers)}"
-
-
 async def test_message_hooks(json_manager: WebsocketManager):
     """
     Test that the inbound and outbound message hooks serialize/deserialize json
@@ -111,31 +96,6 @@ async def test_init_hook(json_manager: WebsocketManager):
     await json_manager.initialize()
     reply = await run_until_message_type(json_manager, "unauthed_echo_reply")
     assert reply == {"type": "unauthed_echo_reply", "text": "Hello init_hook"}
-
-
-@pytest.mark.xfail(reason="I don't know why this test doesn't work. Nick HALP")
-async def test_bad_auth_hook(json_manager: WebsocketManager):
-    """
-    Test that if someone adds an auth_hook but forgets to attach
-    a callback which will call .on_auth, that the ._publish method will
-    time out instead of awaiting .authed_ws forever
-    """
-
-    async def auth_hook(mgr: WebsocketManager):
-        # auth_hook can't use mgr.send because that is goign to wait for authed_ws,
-        # which doesn't get set until auth reply!
-        # So send over the unauth_ws Future.
-        # Also note that the outbound_message_hook isn't applied!
-        ws = await mgr.unauth_ws
-        msg = json.dumps({"type": "auth_request", "token": str(uuid.UUID(int=1))})
-        await ws.send(msg)
-
-    json_manager.auth_hook = auth_hook
-    json_manager.publish_timeout = 1
-    await json_manager.initialize()
-    with pytest.raises(asyncio.TimeoutError):
-        await json_manager.send({"type": "authed_echo_request", "text": "Hello auth"})
-        await asyncio.sleep(2)
 
 
 async def test_auth_hook(json_manager: WebsocketManager):
@@ -234,6 +194,80 @@ async def test_hooks_in_subclass(websocket_server: AppDetails):
     mgr.send({"type": "authed_echo_request", "text": "Hello subclass"})
     reply = await run_until_message_type(mgr, "authed_echo_reply")
     assert reply == {"type": "authed_echo_reply", "text": "Hello subclass"}
+    await mgr.shutdown()
+
+
+# Two fixtures below used by test_structlog_contextvars_worker_hook
+# Pattern pulled from https://www.structlog.org/en/stable/testing.html
+@pytest.fixture(name="log_output")
+def fixture_log_output():
+    return structlog.testing.LogCapture()
+
+
+@pytest.fixture
+def fixture_configure_structlog(log_output):
+    structlog.configure(
+        processors=[
+            structlog.contextvars.merge_contextvars,
+            structlog.processors.CallsiteParameterAdder(
+                {structlog.processors.CallsiteParameter.FUNC_NAME}
+            ),
+            log_output,
+        ]
+    )
+
+
+@pytest.mark.usefixtures("fixture_configure_structlog")
+async def test_structlog_contextvars_worker_hook(websocket_server: AppDetails, log_output):
+    """
+    Test that we can bind contextvars within the context_hook method and that any callbacks
+    or outbound publishing methods will include those in logs.
+    """
+
+    class Sub(WebsocketManager):
+        def __init__(self, ws_url):
+            super().__init__(ws_url)
+            self.session_id = None
+            self.register_callback(self.log_received)
+
+        async def context_hook(self):
+            structlog.contextvars.bind_contextvars(session_id=self.session_id)
+
+        async def connect_hook(self, mgr):
+            ws = await self.unauth_ws
+            self.session_id = ws.response_headers.get("session_id")
+
+        async def inbound_message_hook(self, raw_contents: str):
+            return json.loads(raw_contents)
+
+        async def outbound_message_hook(self, msg: dict):
+            return json.dumps(msg)
+
+        async def _publish(self, message: QueuedMessage):
+            await super()._publish(message)
+            structlog.get_logger().info(f"Publishing {message.contents}")
+
+        async def log_received(self, message: dict):
+            structlog.get_logger().info(f"Received {message}")
+
+    mgr = Sub(ws_url=websocket_server.ws_base + "/ws")
+    await mgr.initialize()
+    # Wait until we're connected before sending a message, otherwise the outbound worker
+    # will drop into .send / ._publish before we have a session_id set
+    await mgr.connected.wait()
+    mgr.send({"type": "unauthed_echo_request", "text": "Hello 1"})
+    # move forward in time until we get the next message from the webserver
+    await mgr.next_event.wait()
+    publish_log = log_output.entries[0]
+    assert publish_log["event"] == 'Publishing {"type": "unauthed_echo_request", "text": "Hello 1"}'
+    assert publish_log["session_id"]
+    assert publish_log["func_name"] == "_publish"
+
+    receive_log = log_output.entries[1]
+    assert receive_log["event"] == "Received {'type': 'unauthed_echo_reply', 'text': 'Hello 1'}"
+    assert receive_log["session_id"]
+    assert receive_log["func_name"] == "log_received"
+
     await mgr.shutdown()
 
 
