@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Use `managed_service_fixtures` for Redis tests
 - `WebsocketManager` backend uses vanilla `logging` instead of `structlog`, remove need for `structlog` dependency once `managed-service-fixtures` also drops it
+- `JupyterBackend` introduce a short sleep in its poll loop while investigating 100% CPU usage
 
 ## [0.2.2] - 2022-07-28
 ### Changed
