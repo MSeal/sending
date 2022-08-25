@@ -43,7 +43,9 @@ class WebsocketManager(AbstractPubSubManager):
         # sent to the server after the session has been authenticated.
         self.unauth_ws = asyncio.Future()
         self.authed_ws = asyncio.Future()
-        # Set / unset by connection and disconnection hooks
+        # Can use await mgr.connected.wait() to block until the websocket is connected
+        # in tests or in situations where you want connect_hook / context_hook to have
+        # information available to it from the websocket response (e.g. RTU session id)
         self.connected = asyncio.Event()
 
         # When an outbound worker is ready to send a message over the wire, it
