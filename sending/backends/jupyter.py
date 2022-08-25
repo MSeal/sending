@@ -1,7 +1,9 @@
+import asyncio
 from queue import Empty
 from typing import Optional, Union
 
 from jupyter_client import AsyncKernelClient
+from jupyter_client.channels import ZMQSocketChannel
 from zmq import NOBLOCK, Event, Socket, SocketOption, pyzmq_version, zmq_version
 from zmq.asyncio import Context
 from zmq.utils.monitor import recv_monitor_message
@@ -93,7 +95,7 @@ class JupyterKernelManager(AbstractPubSubManager):
 
     async def _poll(self):
         for topic_name in self.subscribed_topics:
-            channel_obj = getattr(self._client, f"{topic_name}_channel")
+            channel_obj: ZMQSocketChannel = getattr(self._client, f"{topic_name}_channel")
 
             while True:
                 try:
@@ -117,3 +119,12 @@ class JupyterKernelManager(AbstractPubSubManager):
             # when it violates some constraint such as the max message size.
             logger.info(f"ZMQ disconnected for topic '{topic}', cycling socket")
             self._cycle_socket(topic)
+
+    async def _poll_loop(self):
+        while True:
+            try:
+                await self._poll()
+            except Exception:
+                logger.exception("Uncaught exception encountered while polling backend")
+            finally:
+                await asyncio.sleep(0.001)
