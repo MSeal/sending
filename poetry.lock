@@ -178,7 +178,7 @@ development = ["black", "flake8", "mypy", "pytest", "types-colorama"]
 
 [[package]]
 name = "coverage"
-version = "6.4.2"
+version = "6.4.4"
 description = "Code coverage measurement for Python"
 category = "dev"
 optional = false
@@ -1085,7 +1085,7 @@ websockets = ["websockets"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "d08ee19f9a80b2ed66d6f3637566f8c5a8da8f513e2b4731491fff8a82cc66e7"
+content-hash = "8c5221b4f2140b47cbf6de9460ba3175a107b492396e9df3b809bce62694283b"
 
 [metadata.files]
 aioredis = [

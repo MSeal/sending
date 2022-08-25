@@ -5,7 +5,7 @@ import asyncio
 import enum
 from collections import defaultdict, namedtuple
 from functools import partial, wraps
-from typing import Callable, Coroutine, Dict, List, Set
+from typing import Callable, Coroutine, Dict, List, Optional, Set
 from uuid import UUID, uuid4
 
 from .logging import logger
@@ -53,9 +53,17 @@ class AbstractPubSubManager(abc.ABC):
 
         # Allow these hooks to be defined within the class or attached to an instance
         if not hasattr(self, "inbound_message_hook"):
-            self.inbound_message_hook: Coroutine = None
+            # Called by _inbound_worker when picking up a message from inbound queue
+            # Primarily used for deserializing messages from the wire
+            self.inbound_message_hook: Optional[Callable] = None
         if not hasattr(self, "outbound_message_hook"):
-            self.outbound_message_hook: Coroutine = None
+            # Called by _outbound_worker before pushing a message to _publish
+            # Primarily used for serializing messages going out over the wire
+            self.outbound_message_hook: Optional[Callable] = None
+        if not hasattr(self, "context_hook"):
+            # Called at .initialize() and then within the while True loop for
+            # each worker. Should be used to set structlog.contextvars.bind_contextvars.
+            self.context_hook: Optional[Callable] = None
 
     async def initialize(
         self,
@@ -87,6 +95,8 @@ class AbstractPubSubManager(abc.ABC):
             QueuedMessage(topic="test-topic, contents="echo test", session_id=None)
         )
         """
+        if self.context_hook:
+            await self.context_hook()
         self.outbound_queue = asyncio.Queue(queue_size)
         self.inbound_queue = asyncio.Queue(queue_size)
 
@@ -253,6 +263,8 @@ class AbstractPubSubManager(abc.ABC):
     async def _outbound_worker(self):
         while True:
             message = await self.outbound_queue.get()
+            if self.context_hook:
+                await self.context_hook()
             try:
                 if self.outbound_message_hook is not None:
                     coro = ensure_async(self.outbound_message_hook)
@@ -276,7 +288,8 @@ class AbstractPubSubManager(abc.ABC):
     async def _inbound_worker(self):
         while True:
             message = await self.inbound_queue.get()
-
+            if self.context_hook:
+                await self.context_hook()
             try:
                 if self.inbound_message_hook is not None and message.topic is not SYSTEM_TOPIC:
                     coro = ensure_async(self.inbound_message_hook)
@@ -319,6 +332,8 @@ class AbstractPubSubManager(abc.ABC):
 
     async def _poll_loop(self):
         while True:
+            if self.context_hook:
+                await self.context_hook()
             try:
                 await self._poll()
             except Exception:

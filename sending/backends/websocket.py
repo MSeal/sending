@@ -43,6 +43,8 @@ class WebsocketManager(AbstractPubSubManager):
         # sent to the server after the session has been authenticated.
         self.unauth_ws = asyncio.Future()
         self.authed_ws = asyncio.Future()
+        # Set / unset by connection and disconnection hooks
+        self.connected = asyncio.Event()
 
         # When an outbound worker is ready to send a message over the wire, it
         # calls ._publish which will await the unauth_ws or authed_ws Future.
@@ -63,13 +65,28 @@ class WebsocketManager(AbstractPubSubManager):
         self.max_reconnections = None
 
         # Optional hooks that can be defined in a subclass or attached to an instance.
-        # First auth_hook then init_hook are called immediately after websocket connection
-        # They're separated into two hooks in case a subclass needs to authenticate, and
-        # also queue up initial messages that use .send() (which will wait until auth is accepted)
+        # - connect_hook is called first when websocket is established, useful to
+        #   set contextvars or store state before init / auth hooks are called
+        #
+        # - auth_hook is called next, and also effects how .send() works.
+        #   If auth_hook is defined then .send() won't actually transmit data over the wire
+        #   until on_auth callback has been triggered.
+        #   You want to define an auth_hook if the websocket server expects a first message
+        #   to be some kind of authentication
+        #
+        # - init_hook is called next after auth_hook, useful to kick off messages after
+        #   auth_hook, or if authentication is not part of the websocket server flow.
+        #
+        # - disconnect_hook is called when the websocket connection is lost
+        #
         if not hasattr(self, "auth_hook"):
             self.auth_hook: Optional[Callable] = None
         if not hasattr(self, "init_hook"):
             self.init_hook: Optional[Callable] = None
+        if not hasattr(self, "connect_hook"):
+            self.connect_hook: Optional[Callable] = None
+        if not hasattr(self, "disconnect_hook"):
+            self.disconnect_hook: Optional[Callable] = None
 
         self.register_callback(self.record_last_seen_message)
 
@@ -147,9 +164,14 @@ class WebsocketManager(AbstractPubSubManager):
         """
         # Automatic reconnect https://websockets.readthedocs.io/en/stable/reference/client.html
         async for websocket in websockets.connect(self.ws_url):
-            self.response_headers = dict(websocket.response_headers)
+            self.unauth_ws.set_result(websocket)
+            if self.connect_hook:
+                fn = ensure_async(self.connect_hook)
+                await fn(self)
+            if self.context_hook:
+                await self.context_hook()
+            self.connected.set()
             try:
-                self.unauth_ws.set_result(websocket)
                 # Call the auth and init hooks (casting to async if necessary), passing in 'self'
                 if self.auth_hook:
                     fn = ensure_async(self.auth_hook)
@@ -175,6 +197,10 @@ class WebsocketManager(AbstractPubSubManager):
                     logger.warning("Hit max reconnection attempts, not reconnecting")
                     return await self.shutdown()
                 logger.info("Websocket server disconnected, resetting Futures and reconnecting")
+                if self.disconnect_hook:
+                    fn = ensure_async(self.disconnect_hook)
+                    await fn(self)
+                self.connected.clear()
                 self.unauth_ws = asyncio.Future()
                 self.authed_ws = asyncio.Future()
                 self.reconnections += 1
