@@ -197,6 +197,8 @@ async def test_hooks_in_subclass(websocket_server: AppDetails):
     await mgr.shutdown()
 
 
+# Two fixtures below used by test_structlog_contextvars_worker_hook
+# Pattern pulled from https://www.structlog.org/en/stable/testing.html
 @pytest.fixture(name="log_output")
 def fixture_log_output():
     return structlog.testing.LogCapture()
