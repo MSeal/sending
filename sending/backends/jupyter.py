@@ -13,11 +13,18 @@ from ..logging import logger
 
 
 class JupyterKernelManager(AbstractPubSubManager):
-    def __init__(self, connection_info: dict, *, max_message_size: int = None):
+    def __init__(
+        self,
+        connection_info: dict,
+        *,
+        max_message_size: int = None,
+        sleep_between_polls: float = 0.005,
+    ):
         super().__init__()
         self.connection_info = connection_info
         self._monitor_sockets_for_topic: dict[str, Socket] = {}
         self.max_message_size = max_message_size
+        self.sleep_between_polls = sleep_between_polls
 
     async def initialize(
         self, *, queue_size=0, inbound_workers=1, outbound_workers=1, poll_workers=1
@@ -132,4 +139,4 @@ class JupyterKernelManager(AbstractPubSubManager):
             except Exception:
                 logger.exception("Uncaught exception encountered while polling backend")
             finally:
-                await asyncio.sleep(0.001)
+                await asyncio.sleep(self.sleep_between_polls)
