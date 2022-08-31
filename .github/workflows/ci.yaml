@@ -28,7 +28,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install libzmq3-dev
-          poetry export -f requirements.txt --without-hashes --dev > /tmp/requirements.txt
+          poetry export -f requirements.txt --without-hashes --with dev > /tmp/requirements.txt
           pip install --constraint=/tmp/requirements.txt nox_poetry
       - name: Setup Redis
         uses: ./.github/actions/setup-redis
@@ -51,7 +51,7 @@ jobs:
           poetry-version: 1.2.0
       - name: Install dependencies
         run: |
-          poetry export -f requirements.txt --without-hashes --dev > /tmp/requirements.txt
+          poetry export -f requirements.txt --without-hashes --with dev > /tmp/requirements.txt
           pip install --constraint=/tmp/requirements.txt nox_poetry
       - name: Run lint
         run: nox -s lint
