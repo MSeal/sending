@@ -496,7 +496,7 @@ test = ["ipykernel", "pre-commit", "pytest", "pytest-cov", "pytest-timeout"]
 
 [[package]]
 name = "managed-service-fixtures"
-version = "0.1.4"
+version = "0.1.5"
 description = "Pytest fixtures to manage external services such as Cockroach DB, Vault, or Redis"
 category = "dev"
 optional = false
@@ -511,7 +511,6 @@ pydantic = ">=1.9.0,<2.0.0"
 pytest = ">=7.1.0,<8.0.0"
 pytest-asyncio = ">=0.19.0,<0.20.0"
 pytest-xdist = ">=2.5.0,<3.0.0"
-structlog = ">21"
 
 [[package]]
 name = "matplotlib-inline"
@@ -1085,7 +1084,7 @@ websockets = ["websockets"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.9"
-content-hash = "6d75f5a7970aa474a9b377aa532ff7db9e35399756eee90d4c240f1e9012e9e7"
+content-hash = "10f5d88d0cfa6caea54a4ec1fde5b9da7edc844202efb7426b4f9b0479758171"
 
 [metadata.files]
 aioredis = [
@@ -1426,8 +1425,8 @@ jupyter-core = [
     {file = "jupyter_core-4.11.1.tar.gz", hash = "sha256:2e5f244d44894c4154d06aeae3419dd7f1b0ef4494dc5584929b398c61cfd314"},
 ]
 managed-service-fixtures = [
-    {file = "managed_service_fixtures-0.1.4-py3-none-any.whl", hash = "sha256:538ca91665c568c571dc7bdf11ee82eb1bf3fe2c38df78048eaa5c3a87979750"},
-    {file = "managed_service_fixtures-0.1.4.tar.gz", hash = "sha256:438822c32090c2c19f07578f161dc67d0fc8b0355d2127cb7cf7bef58dbcad34"},
+    {file = "managed_service_fixtures-0.1.5-py3-none-any.whl", hash = "sha256:e3769325f6e95e2f2579eec2bf0f38bb14ec507223446ab90726073900c3c30d"},
+    {file = "managed_service_fixtures-0.1.5.tar.gz", hash = "sha256:7d3ff1beac323e136443925daaa0ef62a1c0087c2008960cd548037bc96fe606"},
 ]
 matplotlib-inline = [
     {file = "matplotlib-inline-0.1.3.tar.gz", hash = "sha256:a04bfba22e0d1395479f866853ec1ee28eea1485c1d69a6faf00dc3e24ff34ee"},
