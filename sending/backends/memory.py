@@ -1,19 +1,23 @@
+"""A Publish Subscribe Manager which operates in memory."""
 import asyncio
 
 from ..base import AbstractPubSubManager, QueuedMessage
 
 
 class InMemoryPubSubManager(AbstractPubSubManager):
+    """A Publish Subscribe Manager which operates in memory."""
     def __init__(self):
         super().__init__()
         self.message_queue: asyncio.Queue[QueuedMessage] = None
 
     async def initialize(self, *args, **kwargs):
+        """Intialize the message queue and its size."""
         queue_size = kwargs.get("queue_size", 0)
         self.message_queue = asyncio.Queue(queue_size)
         return await super().initialize(*args, **kwargs)
 
     async def shutdown(self, now=False):
+        """Shutdown the manager with a default graceful cleanup (now=False)."""
         await super().shutdown(now=now)
         self.message_queue = None
 

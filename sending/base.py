@@ -1,5 +1,15 @@
-"""This module defines an abstract PubSubManager class that must be used when
-   implementing custom managers or other features."""
+"""Publish Subscribe Managers and PubSub sessions.
+
+This module defines an abstract `AbstractPubSubManager` class that must be
+subclassed when implementing custom managers or other features.
+
+This module also implements a `DetachedPubSubSession` that receives messages
+only for topics which it has a subscription.
+
+The module also implements a more robust `PubSubSession`, a subclass of 
+`DetachedPubSubSession, which receives messages from topics that it or its
+parent have a subscription. 
+"""
 import abc
 import asyncio
 import enum
@@ -21,15 +31,17 @@ SYSTEM_TOPIC = "__sending__"
 
 
 class SystemEvents(enum.Enum):
-    # We've forcibly disconnected from the pub/sub server.
-    # This is for situations where the underlying backend has forced a disconnect
-    # without the user asking. ZMQ MAXMSGSIZE cycling connections is a good example.
+    """System events related to the pub/sub manager
+
+    We've forcibly disconnected from the pub/sub server. This is for situations
+    where the underlying backend has forced a disconnect without the user
+    asking. ZMQ `MAXMSGSIZE` cycling connections is a good example.
+    """
     FORCED_DISCONNECT = enum.auto()
 
 
 class AbstractPubSubManager(abc.ABC):
-    """
-    Manages the publish-subscribe workflow.
+    """A manager for the publish-subscribe workflow.
 
     This abstract class provides a common base class for a publish-subscribe
     workflow and the management of components in the workflow.
@@ -74,13 +86,15 @@ class AbstractPubSubManager(abc.ABC):
         poll_workers=1,
         enable_polling=True,
     ):
-        """
-        Initialize a pub-sub channel, specifically its queues and workers.
-        If enable_polling is False, it will only start the inbound and outbound
-        workers, not the poll worker. That is useful if you're writing tests
-        and don't want a connection to external IO to be started.
+        """Initialize a pub-sub channel, specifically its queues and workers.
 
-        E.g.
+        `enable_polling` if set to True, the default, will start the poll
+        workers. If `enable_polling` is False, it will only start the inbound
+        and outbound workers and not start the poll worker. The False setting
+        is useful if you're writing tests and don't want a connection to
+        external IO to be started.
+
+        ```
         mgr = SomeBackend()
         publish = mocker.patch.object(mgr, "_publish")
 
@@ -94,6 +108,7 @@ class AbstractPubSubManager(abc.ABC):
         publish.assert_called_once_with(
             QueuedMessage(topic="test-topic, contents="echo test", session_id=None)
         )
+        ```
         """
         if self.context_hook:
             await self.context_hook()
@@ -111,7 +126,11 @@ class AbstractPubSubManager(abc.ABC):
                 self.poll_workers.append(asyncio.create_task(self._poll_loop()))
 
     async def shutdown(self, now=False):
-        """Shut down a pub-sub channel and its related queues and workers"""
+        """Shut down a pub-sub channel and its related queues and workers.
+        
+        The `now` parameter will drain queues gracefully if set to the default
+        False. If set to True, the queues are cleared and set to None.
+        """
         if not now:
             await self._drain_queues()
 
@@ -143,6 +162,7 @@ class AbstractPubSubManager(abc.ABC):
         self.callback_ids_by_session.clear()
 
     async def _drain_queues(self):
+        """Private method which waits for queues to clear."""
         await self.inbound_queue.join()
         await self.outbound_queue.join()
 
@@ -367,13 +387,13 @@ class AbstractPubSubManager(abc.ABC):
 
 
 class DetachedPubSubSession:
-    """A session that does not receive messages for topics other than what it has explicitly
-    subscribed to.
+    """A session that receives messages from subscribed topics.
 
-    It still relies on the parent as the centralized queuing mechanism for processing inbound
-    and outbound messages, but it ensures total isolation for what messages get passed down to
-    the session's callbacks. This is helpful if you don't want to have a separate polling process
-    for each session.
+    It still relies on the parent PubSubManager as the centralized queuing
+    mechanism for processing inbound and outbound messages. It also ensures
+    total isolation for what messages get passed down to the session's callbacks
+    (detached from its parent's subscriptions). This is helpful when a separate
+    polling process is needed for each session.
     """
 
     def __init__(self, parent: AbstractPubSubManager) -> None:
@@ -448,9 +468,9 @@ class DetachedPubSubSession:
 
 
 class PubSubSession(DetachedPubSubSession):
-    """A holder for callbacks and topic subscriptions. Also receives messages from topics
-    subscribed to by the parent manager.
-
+    """A holder for callbacks and topic subscriptions.
+    
+    Also receives messages from topics subscribed to by the parent manager.
     This is helpful if you have a global topic that all sessions should subscribe to
     automatically without client input.
     """
