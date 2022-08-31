@@ -163,16 +163,24 @@ class WebsocketManager(AbstractPubSubManager):
         await ws.send(message.contents)
 
     async def _poll_loop(self):
-        """
+        """Poll websockets for activity.
+
+        TODO: determine if initialize overrides the base class at all in the subclass
+
         When WebsocketManager.initialize() is awaited, it creates an asyncio Task that runs
-        this function. This is the meat of the WebsocketManager class. It handles creating
-        the websocket connection, reconnecting if the server disconnects, receiving messages
-        over the wire, and putting them onto the inbound message queue.
+        this function. 
+        
+        This is the meat of the WebsocketManager class. 
+        It handles creating the websocket connection, 
+        reconnecting if the server disconnects, 
+        receiving messages over the wire, and 
+        putting them onto the inbound message queue.
 
         It also uses authentication pattern hooks if they're implemented.
         """
         # Automatic reconnect https://websockets.readthedocs.io/en/stable/reference/client.html
         async for websocket in websockets.connect(self.ws_url):
+            # Run unauthenticated steps as well as connect and context hooks
             self.unauth_ws.set_result(websocket)
             if self.connect_hook:
                 fn = ensure_async(self.connect_hook)
@@ -180,6 +188,7 @@ class WebsocketManager(AbstractPubSubManager):
             if self.context_hook:
                 await self.context_hook()
             self.connected.set()
+
             try:
                 # Call the auth and init hooks (casting to async if necessary), passing in 'self'
                 if self.auth_hook:
@@ -188,14 +197,15 @@ class WebsocketManager(AbstractPubSubManager):
                 if self.init_hook:
                     fn = ensure_async(self.init_hook)
                     await fn(self)
+                
                 async for message in websocket:
                     logger.debug(f"Received: {message}")
                     self.schedule_for_delivery(topic="", contents=message)
+
+            # Raised if there's an error trying to connect,
             except websockets.ConnectionClosed:
-                # This will get raised if there's an error trying to connect,
-                # keeping it separate from unknown exceptions that a subclass might want
-                # to handle differently.
                 continue
+            # Handle unknown excceptions.
             except Exception as e:
                 await self.on_exception(e)
                 continue
@@ -215,10 +225,11 @@ class WebsocketManager(AbstractPubSubManager):
                 self.reconnections += 1
 
     async def shutdown(self, now: bool = False):
-        """
-        Custom shutdown logic to take account of closing our automatically-reconnecting websocket.
-        In an ideal world, we drain all outbound messages, stop the task that's reading new
-        inbound messages, and then perform the websocket close handshake.
+        """Perform shutdown and custom logic to account for reconnecting websocket.
+
+        In an ideal world, we drain all outbound messages, 
+        stop the task that's reading new inbound messages, 
+        and then perform the websocket close handshake.
         """
         self._shutting_down = True
         await super().shutdown(now)
@@ -227,16 +238,15 @@ class WebsocketManager(AbstractPubSubManager):
             await ws.close()
 
     async def on_exception(self, exc: Exception):
-        # Called when we get an exception iterating over websocket messages before
-        # we reconnect, in case a Subclass wants to do something with it
+        """Perform additional pre-reconnect behavior when an exception happens"""
         logger.exception(exc)
 
     async def _create_topic_subscription(self, topic_name: str):
-        # Required method by the ABC base, but topics are irrelevant to this Backend
+        # noop since topics are irrelevant to this Backend
         pass
 
     async def _cleanup_topic_subscription(self, topic_name: str):
-        # Required method by the ABC base, but topics are irrelevant to this Backend
+        # noop since topics are irrelevant to this Backend
         pass
 
     async def _poll(self):
