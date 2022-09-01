@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class WebsocketManager(AbstractPubSubManager):
     """Websocket-based Sending backend.
-    
+
     This class handles creating the initial websocket connection and
     reconnecting on server-side disconnect.
 
@@ -33,6 +33,7 @@ class WebsocketManager(AbstractPubSubManager):
                 you also register a callback to .on_auth that is called
                 when you receive an auth response.
     """
+
     def __init__(self, ws_url: str):
         super().__init__()
         self.ws_url = ws_url
@@ -80,7 +81,7 @@ class WebsocketManager(AbstractPubSubManager):
         if not hasattr(self, "auth_hook"):
             self.auth_hook: Optional[Callable] = None
         # `init_hook`` is called next after auth_hook, useful to kick off
-        # messages after auth_hook, or if authentication is not part of the 
+        # messages after auth_hook, or if authentication is not part of the
         # websocket server flow.
         if not hasattr(self, "init_hook"):
             self.init_hook: Optional[Callable] = None
@@ -92,7 +93,7 @@ class WebsocketManager(AbstractPubSubManager):
 
     async def record_last_seen_message(self, message: Any):
         """Automatically registered callback.
-        
+
         Used for debugging and testing.
 
         ```
@@ -134,14 +135,14 @@ class WebsocketManager(AbstractPubSubManager):
         """Publish a message.
 
         Once a message has been picked up from the inbound queue,
-        processed by a callback, then dropped onto the outbound queue, 
+        processed by a callback, then dropped onto the outbound queue,
         the outbound worker will call this method.
 
-        QueuedMessage is namedtuple of topic, contents, session_id. 
+        QueuedMessage is namedtuple of topic, contents, session_id.
         Only contents matter for this Backend since topics are set to ''.
 
         Subclasses that need to serialize outbound data can define a
-        `.outbound_message_hook` instead of overriding this method. 
+        `.outbound_message_hook` instead of overriding this method.
         For instance, if using self.send(<pydantic model>)
         you may want to define `.outbound_message_hook = lambda model: model.json()`
         """
@@ -168,12 +169,12 @@ class WebsocketManager(AbstractPubSubManager):
         TODO: determine if initialize overrides the base class at all in the subclass
 
         When WebsocketManager.initialize() is awaited, it creates an asyncio Task that runs
-        this function. 
-        
-        This is the meat of the WebsocketManager class. 
-        It handles creating the websocket connection, 
-        reconnecting if the server disconnects, 
-        receiving messages over the wire, and 
+        this function.
+
+        This is the meat of the WebsocketManager class.
+        It handles creating the websocket connection,
+        reconnecting if the server disconnects,
+        receiving messages over the wire, and
         putting them onto the inbound message queue.
 
         It also uses authentication pattern hooks if they're implemented.
@@ -197,7 +198,7 @@ class WebsocketManager(AbstractPubSubManager):
                 if self.init_hook:
                     fn = ensure_async(self.init_hook)
                     await fn(self)
-                
+
                 async for message in websocket:
                     logger.debug(f"Received: {message}")
                     self.schedule_for_delivery(topic="", contents=message)
@@ -227,8 +228,8 @@ class WebsocketManager(AbstractPubSubManager):
     async def shutdown(self, now: bool = False):
         """Perform shutdown and custom logic to account for reconnecting websocket.
 
-        In an ideal world, we drain all outbound messages, 
-        stop the task that's reading new inbound messages, 
+        In an ideal world, we drain all outbound messages,
+        stop the task that's reading new inbound messages,
         and then perform the websocket close handshake.
         """
         self._shutting_down = True

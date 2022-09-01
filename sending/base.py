@@ -37,6 +37,7 @@ class SystemEvents(enum.Enum):
     where the underlying backend has forced a disconnect without the user
     asking. ZMQ `MAXMSGSIZE` cycling connections is a good example.
     """
+
     FORCED_DISCONNECT = enum.auto()
 
 
@@ -127,7 +128,7 @@ class AbstractPubSubManager(abc.ABC):
 
     async def shutdown(self, now=False):
         """Shut down a pub-sub channel and its related queues and workers.
-        
+
         The `now` parameter will drain queues gracefully if set to the default
         False. If set to True, the queues are cleared and set to None.
         """
@@ -469,7 +470,7 @@ class DetachedPubSubSession:
 
 class PubSubSession(DetachedPubSubSession):
     """A holder for callbacks and topic subscriptions.
-    
+
     Also receives messages from topics subscribed to by the parent manager.
     This is helpful if you have a global topic that all sessions should subscribe to
     automatically without client input.

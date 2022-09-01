@@ -6,6 +6,7 @@ from ..base import AbstractPubSubManager, QueuedMessage
 
 class RedisPubSubManager(AbstractPubSubManager):
     """A Publish Subscribe Manager which operates using Redis."""
+
     def __init__(self, dsn: str):
         super().__init__()
         self._dsn = dsn

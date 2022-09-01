@@ -6,6 +6,7 @@ from ..base import AbstractPubSubManager, QueuedMessage
 
 class InMemoryPubSubManager(AbstractPubSubManager):
     """A Publish Subscribe Manager which operates in memory."""
+
     def __init__(self):
         super().__init__()
         self.message_queue: asyncio.Queue[QueuedMessage] = None
