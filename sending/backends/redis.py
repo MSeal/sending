@@ -1,19 +1,24 @@
+"""A Publish Subscribe Manager which operates using Redis."""
 import aioredis
 
 from ..base import AbstractPubSubManager, QueuedMessage
 
 
 class RedisPubSubManager(AbstractPubSubManager):
+    """A Publish Subscribe Manager which operates using Redis."""
+
     def __init__(self, dsn: str):
         super().__init__()
         self._dsn = dsn
 
     async def initialize(self, *args, **kwargs):
+        """Initialize the redis db and the pubsub manager."""
         self._redis = aioredis.from_url(self._dsn)
         self._redis_pubsub = self._redis.pubsub(ignore_subscribe_messages=True)
         return await super().initialize(*args, **kwargs)
 
     async def shutdown(self, now=False):
+        """Shutdown the pubsub manager and redis connection."""
         await super().shutdown(now=now)
         await self._redis.close()
         self._redis = None
