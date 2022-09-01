@@ -1100,8 +1100,8 @@ websockets = ["websockets"]
 
 [metadata]
 lock-version = "1.1"
-python-versions = "^3.9"
-content-hash = "287f273fc5f84cc6012a5c1a8388ae8c367895ad9040d8d3fd0e9c51d40a1e7f"
+python-versions = "^3.8"
+content-hash = "c9fb473a4e4aa657b5d69864cc51a1de89a4cb1fa73f89b212c9aacd7e953763"
 
 [metadata.files]
 aioredis = [
