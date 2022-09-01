@@ -6,9 +6,9 @@ subclassed when implementing custom managers or other features.
 This module also implements a `DetachedPubSubSession` that receives messages
 only for topics which it has a subscription.
 
-The module also implements a more robust `PubSubSession`, a subclass of 
+The module also implements a more robust `PubSubSession`, a subclass of
 `DetachedPubSubSession, which receives messages from topics that it or its
-parent have a subscription. 
+parent have a subscription.
 """
 import abc
 import asyncio
