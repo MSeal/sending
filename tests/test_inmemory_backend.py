@@ -3,6 +3,7 @@ from functools import partial
 
 import pytest
 
+from sending.logging import logger
 from sending.backends.memory import InMemoryPubSubManager
 from sending.base import QueuedMessage, SystemEvents, __not_in_a_session__
 
@@ -302,7 +303,10 @@ class TestInMemoryPubSubManager:
         def echo(msg: str):
             mgr.send(topic_name="", message=msg)
 
-        await mgr.initialize(enable_polling=False)
+        # TODO This next line needs checking since it triggers the warnings
+        # TODO not sure if the mock needs adjusting or the initialize logic in abstract and backend class
+        await mgr.initialize(enable_polling=True)
+
         mgr.schedule_for_delivery(topic="", contents="echo test")
         await asyncio.sleep(0.01)
         publish.assert_called_once_with(
