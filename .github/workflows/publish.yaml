@@ -1,4 +1,5 @@
 name: Publish Python Package
+# yamllint disable-line rule:truthy
 on:
   push:
     tags:
