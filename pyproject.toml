@@ -5,7 +5,7 @@ description = "Library for pub/sub usage within an async application"
 authors = ["Nicholas Wold <nick@nicholaswold.com>"]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.8"
 aioredis = {extras = ["hiredis"], version = "^2.0.0", optional = true}
 jupyter_client = {version = "^7.3.0", optional = true}
 ipykernel = {version = "^6.15.1", optional = true}
