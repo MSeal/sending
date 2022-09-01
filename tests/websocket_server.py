@@ -1,6 +1,6 @@
-"""
-A FastAPI app used to test the WebsocketManager Sending backend. This thing
-gets spun up as an external service using managed-service-fixtures in
+"""A FastAPI app used to test the WebsocketManager Sending backend.
+
+This thing gets spun up as an external service using managed-service-fixtures in
 tests/test_websocket_backend.py.
 """
 
@@ -16,9 +16,10 @@ app = FastAPI(debug=True)
 
 
 class WebsocketSession:
-    """
-    Wrapper around a basic websocket connection to maintain state about whether it has
-    performed some kind of authentication exchange
+    """Wrapper around a basic websocket connection to maintain state.
+
+    It keeps state about whether the instance has performed some kind of
+    authentication exchange.
     """
 
     def __init__(self, ws: WebSocket):
@@ -28,11 +29,11 @@ class WebsocketSession:
 
 
 class WebsocketManager:
-    """
-    Singleton collection of WebsocketSessions. Behaviors used in tests:
+    """Singleton collection of WebsocketSessions.
+
+    Behaviors used in tests:
      - Force disconnect an authenticated session by GET /disconnect-ws/{jwt} to test reconnect
     """
-
     _singleton_instance = None
 
     def __init__(self):
@@ -57,14 +58,16 @@ class WebsocketManager:
             self.sessions.remove(session)
 
 
-# Create an arbitrary auth pattern, tests will subclass the WebsocketManager
-# sending backend to implement the auth pattern
+# Create an arbitrary auth pattern for tests.
+# Tests will subclass the WebsocketManager from sending's websocket backend
+# to implement the auth pattern.
 VALID_TOKENS = [str(uuid.UUID(int=1)), str(uuid.UUID(int=2)), str(uuid.UUID(int=3))]
 
 
 async def on_auth_request(token: str, session: WebsocketSession):
-    """
-    Callback for when a client sends a msg like {'type': 'auth_request', 'token': '<token>'}
+    """Callback for when a client sends an auth request message
+
+    The message takes a form like {'type': 'auth_request', 'token': '<token>'}
     If the token is in VALID_TOKENS, set the session as authenticated.
     Other callback functions may check whether a session is authenticated or not.
     """
@@ -77,15 +80,13 @@ async def on_auth_request(token: str, session: WebsocketSession):
 
 
 async def on_unauthed_echo(text: str, session: WebsocketSession):
-    """
-    Always echoes some text, no matter whether the session is authenticated.
-    """
+    """Always echoes some text, no matter whether the session is authenticated."""
     await session.ws.send_json({"type": "unauthed_echo_reply", "text": text})
 
 
 async def on_authed_echo(text: str, session: WebsocketSession):
-    """
-    Echoes some text if the Websocket Session is authenticated.
+    """Echoes some text if the Websocket Session is authenticated.
+
     Returns an error message if not.
     """
     if session.authenticated:
@@ -100,8 +101,9 @@ async def on_authed_echo(text: str, session: WebsocketSession):
 async def websocket_endpoint(
     ws: WebSocket, manager: WebsocketManager = Depends(WebsocketManager.dependency)
 ):
-    """
-    Websocket endpoint. Expects messages to be JSON serialized and have a key 'type'.
+    """Websocket endpoint.
+
+    Expects messages to be JSON serialized and have a key 'type'.
     Callbacks are called based on the type value:
      - 'auth_request': expects a 'token' key. If it in VALID_TOKENS, set session as authenticated
      - 'echo_request': expects a 'text' key. If the session is authenticated, echo the text back.
@@ -132,8 +134,9 @@ async def websocket_endpoint(
 async def disconnect(
     session_token: str, manager: WebsocketManager = Depends(WebsocketManager.dependency)
 ):
-    """
-    Endpoint to trigger a server-side websocket disconnect, as if the websocket server crashed.
+    """Endpoint to trigger a server-side websocket disconnect.
+
+    Simulates a websocket server crash.
     Used in tests for the client reconnection logic.
     """
     for session in manager.sessions:

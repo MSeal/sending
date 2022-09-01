@@ -64,6 +64,8 @@ class WebsocketManager(AbstractPubSubManager):
         self.next_event = asyncio.Event()
         self.last_seen_message = None
         self.reconnections = 0  # reconnection attempt count
+        # TODO: how do we increment reconnection attempts
+        # TODO: one place is in _poll_loop_finally block
         # If max_reconnections is set, then the WebsocketManager will stop
         # trying to reconnect after the number of tries set.
         self.max_reconnections = None
@@ -213,8 +215,10 @@ class WebsocketManager(AbstractPubSubManager):
             finally:
                 if self._shutting_down:
                     break
-                elif self.max_reconnections and self.reconnections >= self.max_reconnections:
+                # TODO this logic needs checking
+                elif self.reconnections >= self.max_reconnections:
                     logger.warning("Hit max reconnection attempts, not reconnecting")
+
                     return await self.shutdown()
                 logger.info("Websocket server disconnected, resetting Futures and reconnecting")
                 if self.disconnect_hook:
