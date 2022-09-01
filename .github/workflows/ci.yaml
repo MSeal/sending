@@ -51,6 +51,6 @@ jobs:
       - name: Install dependencies
         run: |
           poetry export -f requirements.txt --extras "all" --without-hashes --with dev --outputs requirements.txt
-          pip install --constraint=requirements.txt nox_poetry
+          pip install -r requirements.txt
       - name: Run lint
         run: nox -s lint
