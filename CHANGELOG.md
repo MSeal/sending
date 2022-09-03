@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.2.3] - 2022-09-02
 ### Added
 - Standard Noteable open source patterns
   - Contributing / Code of Conduct files
@@ -19,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use `managed_service_fixtures` for Redis tests
 - `WebsocketManager` backend uses vanilla `logging` instead of `structlog`, remove need for `structlog` dependency once `managed-service-fixtures` also drops it
 - `JupyterBackend` introduce a short sleep in its poll loop while investigating 100% CPU usage
+- Changed poetry to version 1.2 and applied needed updates
 
 ## [0.2.2] - 2022-07-28
 ### Changed
