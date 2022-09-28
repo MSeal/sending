@@ -1,6 +1,6 @@
 import asyncio
 from queue import Empty
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from jupyter_client import AsyncKernelClient
 from jupyter_client.channels import ZMQSocketChannel
@@ -25,6 +25,35 @@ class JupyterKernelManager(AbstractPubSubManager):
         self._monitor_sockets_for_topic: dict[str, Socket] = {}
         self.max_message_size = max_message_size
         self.sleep_between_polls = sleep_between_polls
+        # For debug and testing, `.next_event` gets set/cleared after every received message
+        self.next_event = asyncio.Event()
+        self.last_seen_message = None
+        self.register_callback(self.record_last_seen_message)
+
+    async def record_last_seen_message(self, message: Any):
+        """Automatically registered callback.
+
+        Used for debugging and testing.
+
+        ```
+        await mgr.next_event.wait()
+        assert mgr.last_seen_message == <what you expect>
+        ```
+
+        Alternatively, if messages may come out of order, iterate until
+        you see the type of message you want to test for.
+
+        ```
+        while True:
+            await asyncio.wait_for(mgr.next_event.wait(), timeout=1)
+            if mgr.last_seen_message['key_field'] == key_of_interest:
+                break
+        assert mgr.last_seen_message['value_field'] == expected_value
+        ```
+        """
+        self.last_seen_message = message
+        self.next_event.set()
+        self.next_event.clear()
 
     async def initialize(
         self, *, queue_size=0, inbound_workers=1, outbound_workers=1, poll_workers=1

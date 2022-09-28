@@ -68,15 +68,25 @@ class AbstractPubSubManager(abc.ABC):
         if not hasattr(self, "inbound_message_hook"):
             # Called by _inbound_worker when picking up a message from inbound queue
             # Primarily used for deserializing messages from the wire
+            # Will get one argument: incoming "raw" message content over the wire
             self.inbound_message_hook: Optional[Callable] = None
         if not hasattr(self, "outbound_message_hook"):
             # Called by _outbound_worker before pushing a message to _publish
             # Primarily used for serializing messages going out over the wire
+            # Will get one argument, the QueuedMessage.contents coming out of .send()
             self.outbound_message_hook: Optional[Callable] = None
         if not hasattr(self, "context_hook"):
             # Called at .initialize() and then within the while True loop for
             # each worker. Should be used to set structlog.contextvars.bind_contextvars.
+            # Takes no arguments
             self.context_hook: Optional[Callable] = None
+        if not hasattr(self, "callback_hook"):
+            # Called when the inbound worker is about to pass a QueuedMessage.contents
+            # into a callback. Primarily used for logging the QueuedMessage.topic as
+            # contextvars in the callback logging. Can be removed if we begin passing
+            # kwargs / full QueuedMessage to callbacks.
+            # Takses two arguments: the QueuedMessage and the Callback
+            self.callback_hook: Optional[Callable] = None
 
     async def initialize(
         self,
@@ -343,6 +353,8 @@ class AbstractPubSubManager(abc.ABC):
                     # TODO(nick): I would love to have a set of kwargs that are passed around
                     # for callbacks + predicates that you opt-in to. That would be a bit easier
                     # to document and access.
+                    if self.callback_hook:
+                        await self.callback_hook(message, cb)
                     await cb.method(message.contents)
                 else:
                     logger.debug(
