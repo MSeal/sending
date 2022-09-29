@@ -25,35 +25,7 @@ class JupyterKernelManager(AbstractPubSubManager):
         self._monitor_sockets_for_topic: dict[str, Socket] = {}
         self.max_message_size = max_message_size
         self.sleep_between_polls = sleep_between_polls
-        # For debug and testing, `.next_event` gets set/cleared after every received message
-        self.next_event = asyncio.Event()
-        self.last_seen_message = None
-        self.register_callback(self.record_last_seen_message)
-
-    async def record_last_seen_message(self, message: Any):
-        """Automatically registered callback.
-
-        Used for debugging and testing.
-
-        ```
-        await mgr.next_event.wait()
-        assert mgr.last_seen_message == <what you expect>
-        ```
-
-        Alternatively, if messages may come out of order, iterate until
-        you see the type of message you want to test for.
-
-        ```
-        while True:
-            await asyncio.wait_for(mgr.next_event.wait(), timeout=1)
-            if mgr.last_seen_message['key_field'] == key_of_interest:
-                break
-        assert mgr.last_seen_message['value_field'] == expected_value
-        ```
-        """
-        self.last_seen_message = message
-        self.next_event.set()
-        self.next_event.clear()
+        self._skip_sleep_cycles: int = 0
 
     async def initialize(
         self, *, queue_size=0, inbound_workers=1, outbound_workers=1, poll_workers=1
@@ -83,9 +55,10 @@ class JupyterKernelManager(AbstractPubSubManager):
 
     async def _create_topic_subscription(self, topic_name: str):
         if hasattr(self._client, f"{topic_name}_channel"):
-            channel_obj = getattr(self._client, f"{topic_name}_channel")
+            channel_obj: ZMQSocketChannel = getattr(self._client, f"{topic_name}_channel")
             channel_obj.start()
 
+            # monitor_socket type: zmq.asyncio.Socket(zmq.PAIR)
             monitor_socket = channel_obj.socket.get_monitor_socket()
             self._monitor_sockets_for_topic[topic_name] = monitor_socket
 
@@ -135,17 +108,22 @@ class JupyterKernelManager(AbstractPubSubManager):
 
             while True:
                 try:
-                    msg = await channel_obj.get_msg(timeout=0)
+                    msg: dict = await channel_obj.get_msg(timeout=0)
+                    print(topic_name, msg)
                     self.schedule_for_delivery(topic_name, msg)
                 except Empty:
                     break
 
         topics_to_cycle = []
+        self._cycling_sockets = False
         for topic, socket in self._monitor_sockets_for_topic.items():
             while await socket.poll(0):
-                msg = await recv_monitor_message(socket, flags=NOBLOCK)
+                msg: dict = await recv_monitor_message(socket, flags=NOBLOCK)
+                print(topic, socket, msg)
                 logger.debug(f"ZMQ event: {topic=} {msg['event']=} {msg['value']=}")
                 if msg["event"] == Event.DISCONNECTED:
+                    self._skip_sleep_cycles += 5
+                    print(f"disconnected {topic=} {socket=}")
                     self._emit_system_event(topic, SystemEvents.FORCED_DISCONNECT)
                     topics_to_cycle.append(topic)
 
@@ -154,6 +132,7 @@ class JupyterKernelManager(AbstractPubSubManager):
             # This is helpful in situations where ZMQ disconnects peers
             # when it violates some constraint such as the max message size.
             logger.info(f"ZMQ disconnected for topic '{topic}', cycling socket")
+            print("cycling zmq")
             self._cycle_socket(topic)
 
     async def _poll_loop(self):
@@ -167,6 +146,12 @@ class JupyterKernelManager(AbstractPubSubManager):
             try:
                 await self._poll()
             except Exception:
+                print("poll loop exc")
                 logger.exception("Uncaught exception encountered while polling backend")
             finally:
-                await asyncio.sleep(self.sleep_between_polls)
+                if self._skip_sleep_cycles:
+                    self._skip_sleep_cycles -= 1
+                    print(f"skipping sleep {self._skip_sleep_cycles=}")
+                else:
+                    await asyncio.sleep(self.sleep_between_polls)
+                # await asyncio.sleep(self.sleep_between_polls)
