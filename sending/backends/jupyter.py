@@ -10,6 +10,7 @@ from zmq.utils.monitor import recv_monitor_message
 
 from ..base import AbstractPubSubManager, QueuedMessage, SystemEvents
 from ..logging import logger
+import time
 
 
 class JupyterKernelManager(AbstractPubSubManager):
@@ -26,6 +27,7 @@ class JupyterKernelManager(AbstractPubSubManager):
         self.max_message_size = max_message_size
         self.sleep_between_polls = sleep_between_polls
         self._skip_sleep_cycles: int = 0
+        self.reconnecting_task = None
 
     async def initialize(
         self, *, queue_size=0, inbound_workers=1, outbound_workers=1, poll_workers=1
@@ -37,6 +39,7 @@ class JupyterKernelManager(AbstractPubSubManager):
 
         self._client = AsyncKernelClient(context=self._context)
         self._client.load_connection_info(self.connection_info)
+        self.reconnecting_task = asyncio.create_task(self._reconnect_disconnected_sockets())
 
         return await super().initialize(
             queue_size=queue_size,
@@ -49,6 +52,8 @@ class JupyterKernelManager(AbstractPubSubManager):
         await super().shutdown(now)
         # https://github.com/zeromq/pyzmq/issues/1003
         self._context.destroy(linger=0)
+        if self.reconnecting_task:
+            self.reconnecting_task.cancel()
 
     def set_context_option(self, option: int, val: Union[int, bytes]):
         self._context.setsockopt(option, val)
@@ -102,10 +107,29 @@ class JupyterKernelManager(AbstractPubSubManager):
         monitor_socket = channel_obj.socket.get_monitor_socket()
         self._monitor_sockets_for_topic[topic] = monitor_socket
 
+    async def _reconnect_disconnected_sockets(self):
+        """
+        Watch for `Event.DISCONNECTED` on any of our monitor sockets. This happens when the
+        socket is disconnected due to something like max message size. It's important that
+        we reconnect ASAP to avoid missing messages that were sent while we were disconnected.
+        """
+        while True:
+            for topic, socket in self._monitor_sockets_for_topic.items():
+                try:
+                    while await socket.poll(0):
+                        msg: dict = await recv_monitor_message(socket, flags=NOBLOCK)
+                        if msg["event"] == Event.DISCONNECTED:
+                            print(f"{topic} socket disconnected. Reconnecting...")
+                            self._emit_system_event(topic, SystemEvents.FORCED_DISCONNECT)
+                            self._cycle_socket(topic)
+                except Exception as e:
+                    print(e)
+                    await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
+
     async def _poll(self):
         for topic_name in self.subscribed_topics:
             channel_obj: ZMQSocketChannel = getattr(self._client, f"{topic_name}_channel")
-
             while True:
                 try:
                     msg: dict = await channel_obj.get_msg(timeout=0)
@@ -113,27 +137,6 @@ class JupyterKernelManager(AbstractPubSubManager):
                     self.schedule_for_delivery(topic_name, msg)
                 except Empty:
                     break
-
-        topics_to_cycle = []
-        self._cycling_sockets = False
-        for topic, socket in self._monitor_sockets_for_topic.items():
-            while await socket.poll(0):
-                msg: dict = await recv_monitor_message(socket, flags=NOBLOCK)
-                print(topic, socket, msg)
-                logger.debug(f"ZMQ event: {topic=} {msg['event']=} {msg['value']=}")
-                if msg["event"] == Event.DISCONNECTED:
-                    self._skip_sleep_cycles += 5
-                    print(f"disconnected {topic=} {socket=}")
-                    self._emit_system_event(topic, SystemEvents.FORCED_DISCONNECT)
-                    topics_to_cycle.append(topic)
-
-        for topic in topics_to_cycle:
-            # If the ZMQ socket is disconnected, try cycling it
-            # This is helpful in situations where ZMQ disconnects peers
-            # when it violates some constraint such as the max message size.
-            logger.info(f"ZMQ disconnected for topic '{topic}', cycling socket")
-            print("cycling zmq")
-            self._cycle_socket(topic)
 
     async def _poll_loop(self):
         """
@@ -149,9 +152,9 @@ class JupyterKernelManager(AbstractPubSubManager):
                 print("poll loop exc")
                 logger.exception("Uncaught exception encountered while polling backend")
             finally:
-                if self._skip_sleep_cycles:
-                    self._skip_sleep_cycles -= 1
-                    print(f"skipping sleep {self._skip_sleep_cycles=}")
-                else:
-                    await asyncio.sleep(self.sleep_between_polls)
-                # await asyncio.sleep(self.sleep_between_polls)
+                # if self._skip_sleep_cycles:
+                #     self._skip_sleep_cycles -= 1
+                #     print(f"skipping sleep {self._skip_sleep_cycles=}")
+                # else:
+                #     await asyncio.sleep(self.sleep_between_polls)
+                await asyncio.sleep(self.sleep_between_polls)
