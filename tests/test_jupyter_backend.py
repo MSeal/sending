@@ -1,12 +1,12 @@
 import asyncio
+import time
+from typing import List
 
 import pytest
 from jupyter_client import manager
 
 from sending.backends.jupyter import JupyterKernelManager
 from sending.base import SystemEvents
-import time
-from typing import List
 
 
 @pytest.fixture()
