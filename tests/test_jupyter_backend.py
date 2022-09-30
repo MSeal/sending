@@ -152,9 +152,9 @@ class TestJupyterBackend:
                 msg_types=["status", "execute_input", "execute_reply", "status"], timeout=3
             )
         except asyncio.TimeoutError:
-            raise Exception("Did not see the expected messages after cycling the iopub channel")
-        finally:
             await mgr.shutdown()
+            raise Exception("Did not see the expected messages after cycling the iopub channel")
+
         disconnect_event.assert_called()
 
         # Prove that after cycling the socket, normal executions work the same as always
