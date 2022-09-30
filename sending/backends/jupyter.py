@@ -1,10 +1,11 @@
 import asyncio
-from queue import Empty
-from typing import Optional, Union
+import collections
+from typing import List, Optional, Union, Dict
 
 from jupyter_client import AsyncKernelClient
 from jupyter_client.channels import ZMQSocketChannel
-from zmq import NOBLOCK, Event, Socket, SocketOption, pyzmq_version, zmq_version
+import zmq
+
 from zmq.asyncio import Context
 from zmq.utils.monitor import recv_monitor_message
 
@@ -18,21 +19,21 @@ class JupyterKernelManager(AbstractPubSubManager):
         connection_info: dict,
         *,
         max_message_size: int = None,
-        sleep_between_polls: float = 0.005,
     ):
         super().__init__()
         self.connection_info = connection_info
-        self._monitor_sockets_for_topic: dict[str, Socket] = {}
         self.max_message_size = max_message_size
-        self.sleep_between_polls = sleep_between_polls
+        self.channel_tasks: Dict[str, List[asyncio.Task]] = collections.defaultdict(list)
 
     async def initialize(
         self, *, queue_size=0, inbound_workers=1, outbound_workers=1, poll_workers=1
     ):
-        logger.debug(f"Initializing Jupyter Kernel Manager: {zmq_version()=}, {pyzmq_version()=}")
+        logger.debug(
+            f"Initializing Jupyter Kernel Manager: {zmq.zmq_version()=}, {zmq.pyzmq_version()=}"
+        )
         self._context = Context()
         if self.max_message_size:
-            self.set_context_option(SocketOption.MAXMSGSIZE, self.max_message_size)
+            self.set_context_option(zmq.SocketOption.MAXMSGSIZE, self.max_message_size)
 
         self._client = AsyncKernelClient(context=self._context)
         self._client.load_connection_info(self.connection_info)
@@ -45,6 +46,9 @@ class JupyterKernelManager(AbstractPubSubManager):
         )
 
     async def shutdown(self, now=False):
+        for topic_name, task_list in self.channel_tasks.items():
+            for task in task_list:
+                task.cancel()
         await super().shutdown(now)
         # https://github.com/zeromq/pyzmq/issues/1003
         self._context.destroy(linger=0)
@@ -52,24 +56,73 @@ class JupyterKernelManager(AbstractPubSubManager):
     def set_context_option(self, option: int, val: Union[int, bytes]):
         self._context.setsockopt(option, val)
 
-    async def _create_topic_subscription(self, topic_name: str):
-        if hasattr(self._client, f"{topic_name}_channel"):
-            channel_obj = getattr(self._client, f"{topic_name}_channel")
-            channel_obj.start()
+    async def watch_for_channel_messages(self, topic_name: str, channel_obj: ZMQSocketChannel):
+        while True:
+            msg: dict = await channel_obj.get_msg()
+            print(msg)
+            self.schedule_for_delivery(topic_name, msg)
 
+    async def watch_for_disconnect(self, monitor_socket: zmq.Socket):
+        while True:
+            msg: dict = await recv_monitor_message(monitor_socket)
+            event: zmq.Event = msg["event"]
+            if event == zmq.EVENT_DISCONNECTED:
+                return
+
+    async def watch_channel(self, topic_name: str):
+        channel_name = f"{topic_name}_channel"
+        while True:
+            # The channel properties (e.g. self._client.iopub_channel) will connect the socket
+            # if self._client._iopub_channel is None.
+            channel_obj: ZMQSocketChannel = getattr(self._client, channel_name)
             monitor_socket = channel_obj.socket.get_monitor_socket()
-            self._monitor_sockets_for_topic[topic_name] = monitor_socket
+            monitor_task = asyncio.create_task(self.watch_for_disconnect(monitor_socket))
+            message_task = asyncio.create_task(
+                self.watch_for_channel_messages(topic_name, channel_obj)
+            )
+
+            # add tasks to self.channel_tasks so we can cleanup during topic unsubscribe / shutdown
+            self.channel_tasks[topic_name].append(monitor_task)
+            self.channel_tasks[topic_name].append(message_task)
+
+            # Run the monitor and message tasks. Message task should run forever.
+            # If the monitor task returns then it means the socket was disconnected
+            # (max message size) and we need to cycle it.
+            done, pending = await asyncio.wait(
+                [monitor_task, message_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            for task in done:
+                if task.exception():
+                    raise task.exception()
+
+            self.channel_tasks[topic_name].remove(monitor_task)
+            self.channel_tasks[topic_name].remove(message_task)
+            logger.info(f"Cycling topic {topic_name} after disconnect")
+            print(f"Cycling topic {topic_name} after disconnect")
+            self._emit_system_event(topic_name, SystemEvents.FORCED_DISCONNECT)
+            channel_obj.close()
+            setattr(self._client, f"_{channel_name}", None)
+
+    async def _create_topic_subscription(self, topic_name: str):
+        task = asyncio.create_task(self.watch_channel(topic_name))
+        self.channel_tasks[topic_name].append(task)
 
     async def _cleanup_topic_subscription(self, topic_name: str):
-        if hasattr(self._client, f"{topic_name}_channel"):
-            channel_obj = getattr(self._client, f"{topic_name}_channel")
-            channel_obj.socket.disable_monitor()
-            channel_obj.close()
-
-            # Reset the underlying channel object so jupyter_client will recreate it
-            # if we subscribe to this again.
+        print(f"Cleaning up topic {topic_name}")
+        if topic_name in self.channel_tasks:
+            for task in self.channel_tasks[topic_name]:
+                task.cancel()
+                self.channel_tasks[topic_name].remove(task)
+            await asyncio.sleep(0)
+            # Reset the channel object on our jupyter_client
             setattr(self._client, f"_{topic_name}_channel", None)
-            del self._monitor_sockets_for_topic[topic_name]
+        else:
+            logger.warning(
+                f"Got a call to cleanup topic {topic_name} but it wasn't in the channel_tasks dict"
+            )
 
     def send(
         self,
@@ -91,53 +144,8 @@ class JupyterKernelManager(AbstractPubSubManager):
             channel_obj = getattr(self._client, f"{topic_name}_channel")
             channel_obj.send(message.contents)
 
-    def _cycle_socket(self, topic):
-        channel_obj = getattr(self._client, f"{topic}_channel")
-        channel_obj.socket.disable_monitor()
-        channel_obj.close()
-        connect_fn = getattr(self._client, f"connect_{topic}")
-        channel_obj.socket = connect_fn()
-        monitor_socket = channel_obj.socket.get_monitor_socket()
-        self._monitor_sockets_for_topic[topic] = monitor_socket
-
     async def _poll(self):
-        for topic_name in self.subscribed_topics:
-            channel_obj: ZMQSocketChannel = getattr(self._client, f"{topic_name}_channel")
-
-            while True:
-                try:
-                    msg = await channel_obj.get_msg(timeout=0)
-                    self.schedule_for_delivery(topic_name, msg)
-                except Empty:
-                    break
-
-        topics_to_cycle = []
-        for topic, socket in self._monitor_sockets_for_topic.items():
-            while await socket.poll(0):
-                msg = await recv_monitor_message(socket, flags=NOBLOCK)
-                logger.debug(f"ZMQ event: {topic=} {msg['event']=} {msg['value']=}")
-                if msg["event"] == Event.DISCONNECTED:
-                    self._emit_system_event(topic, SystemEvents.FORCED_DISCONNECT)
-                    topics_to_cycle.append(topic)
-
-        for topic in topics_to_cycle:
-            # If the ZMQ socket is disconnected, try cycling it
-            # This is helpful in situations where ZMQ disconnects peers
-            # when it violates some constraint such as the max message size.
-            logger.info(f"ZMQ disconnected for topic '{topic}', cycling socket")
-            self._cycle_socket(topic)
+        pass
 
     async def _poll_loop(self):
-        """
-        Override base Manager _poll_loop to switch the final asyncio.sleep from 0 to
-        something more than that (definable at init or after instantiation, default 0.005).
-        While observing JupyterManager in real world, containers are using 100% CPU.
-        Possibly due to this loop being too aggressive?
-        """
-        while True:
-            try:
-                await self._poll()
-            except Exception:
-                logger.exception("Uncaught exception encountered while polling backend")
-            finally:
-                await asyncio.sleep(self.sleep_between_polls)
+        pass

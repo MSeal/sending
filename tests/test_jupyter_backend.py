@@ -115,7 +115,6 @@ class TestJupyterBackend:
         iopub_cb.assert_not_called()
         shell_cb.assert_called_once()
 
-    @pytest.mark.xfail(reason="Cycling sockets is buggy in the current implementation")
     async def test_reconnection(self, mocker, ipykernel):
         """
         Test that if a message over the zmq channel is too large, we won't receive it
@@ -155,7 +154,6 @@ class TestJupyterBackend:
         except asyncio.TimeoutError:
             await mgr.shutdown()
             raise Exception("Did not see the expected messages after cycling the iopub channel")
-
         disconnect_event.assert_called()
 
         # Prove that after cycling the socket, normal executions work the same as always
