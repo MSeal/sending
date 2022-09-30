@@ -39,6 +39,7 @@ class JupyterMonitor:
         to see 'status', 'execute_reply', and 'status' again.
         """
         deadline = time.time() + timeout
+        msg_types = msg_types[:]
         while msg_types:
             max_wait = deadline - time.time()
             await asyncio.wait_for(self.next_event.wait(), timeout=max_wait)
