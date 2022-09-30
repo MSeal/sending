@@ -9,7 +9,7 @@ import structlog
 from managed_service_fixtures import AppDetails, AppManager
 
 from sending.backends.websocket import WebsocketManager
-from sending.base import QueuedMessage
+from sending.base import Callback, QueuedMessage
 
 
 @pytest.fixture(scope="session")
@@ -233,6 +233,11 @@ async def test_structlog_contextvars_worker_hook(websocket_server: AppDetails, l
         async def context_hook(self):
             structlog.contextvars.bind_contextvars(session_id=self.session_id)
 
+        async def callback_hook(self, message: QueuedMessage, callback: Callback):
+            structlog.contextvars.bind_contextvars(
+                topic=message.topic, callback_name=callback.qualname
+            )
+
         async def connect_hook(self, mgr):
             ws = await self.unauth_ws
             self.session_id = ws.response_headers.get("session_id")
@@ -267,6 +272,11 @@ async def test_structlog_contextvars_worker_hook(websocket_server: AppDetails, l
     assert receive_log["event"] == "Received {'type': 'unauthed_echo_reply', 'text': 'Hello 1'}"
     assert receive_log["session_id"]
     assert receive_log["func_name"] == "log_received"
+    assert receive_log["topic"] == ""
+    assert (
+        receive_log["callback_name"]
+        == "test_structlog_contextvars_worker_hook.<locals>.Sub.log_received"
+    )
 
     await mgr.shutdown()
 
