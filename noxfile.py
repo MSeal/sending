@@ -14,6 +14,7 @@ def test(session: nox_poetry.Session):
         "pytest",
         "-v",
         "--cov=sending",
+        "--timeout=30",
         env={"SENDING__ENABLE_LOGGING": "True"},
     )
 
