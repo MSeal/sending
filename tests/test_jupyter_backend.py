@@ -39,12 +39,18 @@ class JupyterMonitor:
         to see 'status', 'execute_reply', and 'status' again.
         """
         deadline = time.time() + timeout
-        msg_types = msg_types[:]
-        while msg_types:
+        to_observe = msg_types[:]
+        while to_observe:
             max_wait = deadline - time.time()
-            await asyncio.wait_for(self.next_event.wait(), timeout=max_wait)
-            if self.last_seen_event["msg_type"] in msg_types:
-                msg_types.remove(self.last_seen_event["msg_type"])
+            try:
+                await asyncio.wait_for(self.next_event.wait(), timeout=max_wait)
+            except asyncio.TimeoutError:
+                raise Exception(
+                    f"Did not see the expected messages in time.\nTimeout: {timeout}\nExpected messages: {msg_types}\nUnobserved: {to_observe}"  # noqa: E501
+                )
+
+            if self.last_seen_event["msg_type"] in to_observe:
+                to_observe.remove(self.last_seen_event["msg_type"])
             self.next_event.clear()
 
 
