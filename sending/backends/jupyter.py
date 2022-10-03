@@ -1,12 +1,11 @@
 import asyncio
 import collections
-from typing import List, Optional, Union, Dict
+from typing import Dict, List, Optional, Union
 
-from jupyter_client import AsyncKernelClient
-from jupyter_client.channels import ZMQSocketChannel
 import jupyter_client.session
 import zmq
-
+from jupyter_client import AsyncKernelClient
+from jupyter_client.channels import ZMQSocketChannel
 from zmq.asyncio import Context
 from zmq.utils.monitor import recv_monitor_message
 
