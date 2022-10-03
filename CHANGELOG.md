@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New extra install `-E websockets`, additionally a convenience `-E all` option
 - `context_hook` in Base Manager that can be used to bind structlog contextvars for all workers (inbound, outbound, poll)
 - `connect_hook` and `disconnect_hook` for Websocket manager
+- `callback_hook` that takes in `QueuedMessage` and `Callback`, useful for adding things like topic to contextvars for callback functions
 
 ### Changed
 - Use `managed_service_fixtures` for Redis tests
