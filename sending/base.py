@@ -13,6 +13,7 @@ parent have a subscription.
 import abc
 import asyncio
 import enum
+import traceback
 from collections import defaultdict, namedtuple
 from functools import partial, wraps
 from typing import Callable, Dict, List, Optional, Set
@@ -302,8 +303,11 @@ class AbstractPubSubManager(abc.ABC):
                     message = message._replace(contents=await coro(message.contents))
                 logger.debug(f"Sending message to topic: {message.topic}")
                 await self._publish(message)
-            except Exception:
-                logger.exception("Uncaught exception found while publishing message")
+            except Exception as e:
+                tb_str = traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)
+                logger.exception(
+                    "Uncaught exception found while publishing message", exc_info="".join(tb_str)
+                )
             finally:
                 self.outbound_queue.task_done()
 
@@ -334,8 +338,12 @@ class AbstractPubSubManager(abc.ABC):
                 await asyncio.gather(
                     *[self._delegate_to_callback(message, cb_id) for cb_id in callback_ids]
                 )
-            except Exception:
-                logger.exception("Uncaught exception found while processing inbound message")
+            except Exception as e:
+                tb_str = traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)
+                logger.exception(
+                    "Uncaught exception found while processing inbound message",
+                    exc_info="".join(tb_str),
+                )
             finally:
                 self.inbound_queue.task_done()
 
@@ -360,8 +368,12 @@ class AbstractPubSubManager(abc.ABC):
                     logger.debug(
                         f"Skipping callback '{cb.qualname}' because predicate returned False"
                     )
-            except Exception:
-                logger.exception("Uncaught exception encountered while delegating to callback")
+            except Exception as e:
+                tb_str = traceback.format_exception(etype=type(e), value=e, tb=e.__traceback__)
+                logger.exception(
+                    "Uncaught exception encountered while delegating to callback",
+                    exc_info="".join(tb_str),
+                )
 
     async def _poll_loop(self):
         while True:
