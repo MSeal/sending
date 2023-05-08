@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2023-05-08
+### Added
+- `manager.register_callback(cb, run_once=True)` argument to deregister callbacks after they've been called a single time
+
 ## [0.3.0] - 2023-04-26
 ### Added
 - Standard Noteable open source patterns

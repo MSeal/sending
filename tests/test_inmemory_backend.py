@@ -46,6 +46,21 @@ class TestInMemoryPubSubManager:
         assert len(cache) == 1
         assert cache[-1] == "test async_cb"
 
+    async def test_register_run_once(self, manager: InMemoryPubSubManager):
+        cache = []
+        cb = partial(callback, cache)
+        await manager.subscribe_to_topic("test")
+        manager.register_callback(cb, run_once=True)
+        # Run once, should trigger callback. Wrapped in list() because dict will change size
+        for id, cb in list(manager.callbacks_by_id.items()):
+            await manager._delegate_to_callback(QueuedMessage("test", "test cb", None), id)
+        assert len(cache) == 1
+        assert cache[-1] == "test cb"
+        # run a second time, but callback should be deregistered
+        for id, cb in manager.callbacks_by_id.items():
+            await manager._delegate_to_callback(QueuedMessage("test", "test cb", None), id)
+        assert len(cache) == 1
+
     async def test_send_to_subscribed_topic(self, manager: InMemoryPubSubManager):
         cache = []
         cb = partial(async_callback, cache)

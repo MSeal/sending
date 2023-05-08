@@ -19,11 +19,20 @@ from functools import partial, wraps
 from typing import Callable, Dict, List, Optional, Set
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel
+
 from .logging import logger
 from .util import ensure_async
 
 QueuedMessage = namedtuple("QueuedMessage", ["topic", "contents", "session_id"])
-Callback = namedtuple("Callback", ["method", "predicate", "qualname"])
+
+
+class Callback(BaseModel):
+    method: Callable
+    predicate: Optional[Callable] = None
+    qualname: Optional[str] = None
+    run_once: bool = False
+
 
 __not_in_a_session__ = object()
 
@@ -233,6 +242,7 @@ class AbstractPubSubManager(abc.ABC):
         on_predicate: Callable = None,
         on_system_event: SystemEvents = None,
         _session_id=None,
+        run_once: bool = False,
     ) -> Callable:
         """Register a subscriber callback with the publisher."""
 
@@ -257,12 +267,14 @@ class AbstractPubSubManager(abc.ABC):
         if hasattr(fn, "__qualname__"):
             qualname = fn.__qualname__
         elif hasattr(fn, "__repr__"):
-            qualname = fn.__repr__
+            qualname = str(fn.__repr__)
         else:
-            qualname = cb_id
+            qualname = str(cb_id)
 
-        logger.debug(f"Registering callback: '{qualname}'")
-        self.callbacks_by_id[cb_id] = Callback(fn, predicate, qualname)
+        logger.critical(f"Registering callback: '{qualname}'")
+        self.callbacks_by_id[cb_id] = Callback(
+            method=fn, predicate=predicate, qualname=qualname, run_once=run_once
+        )
 
         if _session_id is not None:
             self.callback_ids_by_session[_session_id].add(cb_id)
@@ -364,6 +376,8 @@ class AbstractPubSubManager(abc.ABC):
                     if self.callback_hook:
                         await self.callback_hook(message, cb)
                     await cb.method(message.contents)
+                    if cb.run_once:
+                        self._detach_callback(callback_id, message.session_id)
                 else:
                     logger.debug(
                         f"Skipping callback '{cb.qualname}' because predicate returned False"
