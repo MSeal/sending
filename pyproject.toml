@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "sending"
-version = "0.3.0"
+version = "0.3.1"
 description = "Library for pub/sub usage within an async application"
 authors = ["Nicholas Wold <nick@nicholaswold.com>"]
 
@@ -49,3 +49,6 @@ line-length = 100
 line_length = 100
 multi_line_output = 3
 include_trailing_comma = true
+
+[tool.ruff]
+max-line-length = 100
