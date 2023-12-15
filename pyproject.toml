@@ -18,7 +18,7 @@ websockets = ["websockets"]
 all = ["aioredis", "jupyter_client", "ipykernel", "websockets"]
 
 [tool.poetry.dev-dependencies]
-pytest = "^7.1.2"
+pytest = "^7.4.3"
 pytest-mock = "^3.7.0"
 black = "^22.3.0"
 flake8 = "^5.0.4"
